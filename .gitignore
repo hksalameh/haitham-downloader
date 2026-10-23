@@ -1,0 +1,19 @@
+# Rust build output
+/target/
+
+# macOS metadata (incl. AppleDouble files on external drives)
+._*
+.DS_Store
+
+# Editors / OS
+.idea/
+.vscode/
+Thumbs.db
+
+# Partial downloads and state files from local manual testing
+*.zajil-part
+*.zajil-state
+
+# Never commit third-party installers (clean-room rule)
+*.exe
+*.msi
