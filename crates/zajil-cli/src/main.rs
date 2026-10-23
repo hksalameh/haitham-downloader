@@ -121,6 +121,7 @@ async fn run(command: Command, connections: usize) -> ExitCode {
         Err(Failure::Engine(Error::Interrupted { state_file, reason })) => {
             stopped(&reason, &state_file)
         }
+        Err(Failure::Engine(err @ Error::CredentialsNeeded { .. })) => needs_credentials(&err),
         Err(Failure::Cancelled) => match progress.state_file.clone() {
             Some(state_file) => stopped("cancelled", &state_file),
             None => fail("cancelled"),
@@ -167,6 +168,55 @@ fn stopped(reason: &str, state_file: &Path) -> ExitCode {
         }
     }
     ExitCode::from(EXIT_RESUMABLE)
+}
+
+/// A resume the server refused with 401: the state file never keeps a user
+/// name or password, so tell the user how to download the file again.
+///
+/// The user runs their own `zajil get` again (no command with the URL is
+/// printed: it would put the password in a command line and show a token
+/// from the URL), after deleting the two old files. Those paths come from
+/// the server, so the delete command and the folder are quoted for each
+/// shell, like the resume command in [`stopped`] (review of #29).
+fn needs_credentials(err: &Error) -> ExitCode {
+    let Error::CredentialsNeeded { state_file, .. } = err else {
+        return fail(&err.to_string());
+    };
+    eprintln!("zajil: error: {err}");
+    let part_file = zajil_core::state::part_path(
+        &zajil_core::state::final_path_for_state(state_file).unwrap_or_default(),
+    );
+    let (state_arg, part_arg) = (state_file.to_string_lossy(), part_file.to_string_lossy());
+    let dir = state_file.parent().unwrap_or(Path::new("."));
+    eprintln!("zajil: to download it again:");
+    eprintln!("zajil:   1. delete the two files this download left:");
+    for ShellCommand { shell, command } in shell::delete_commands(&[&state_arg, &part_arg]) {
+        match command {
+            Some(command) => {
+                eprintln!("zajil:      in {shell}:");
+                eprintln!("    {command}");
+            }
+            None => eprintln!(
+                "zajil:      {shell} cannot be given these paths safely; use another shell."
+            ),
+        }
+    }
+    eprintln!(
+        "zajil:   2. run the same `zajil get` command again, with your user name and password \
+         in the URL, and with this folder:"
+    );
+    for ShellCommand { shell, command } in shell::commands("--dir", &dir.to_string_lossy()) {
+        match command {
+            Some(command) => {
+                eprintln!("zajil:      in {shell}:");
+                eprintln!("    {command}");
+            }
+            None => eprintln!(
+                "zajil:      {shell} cannot be given this folder safely; use another shell."
+            ),
+        }
+    }
+    ExitCode::FAILURE
 }
 
 fn fail(message: &str) -> ExitCode {

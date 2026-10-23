@@ -205,6 +205,16 @@ pub enum Error {
         #[source]
         source: io::Error,
     },
+    #[error(
+        "the server asks for a user name and password (401 Unauthorized); Zajil never saves \
+         them in the state file, so this download cannot be resumed and has to be downloaded \
+         again"
+    )]
+    CredentialsNeeded {
+        /// The URL of the download, without a user name or password.
+        url: String,
+        state_file: PathBuf,
+    },
     #[error("another process is already downloading {}", .0.display())]
     Locked(PathBuf),
     #[error(
@@ -472,7 +482,7 @@ impl Engine {
                 )
                 .await
             }
-            status => Err(Error::Status(status)),
+            status => Err(refused(status, &state, &final_path, &Attempt::new(None))),
         }
     }
 
@@ -575,7 +585,7 @@ impl Engine {
                 )
                 .await
             }
-            status => Err(Error::Status(status)),
+            status => Err(refused(status, &state, &final_path, &Attempt::new(None))),
         }
     }
 
@@ -639,7 +649,7 @@ impl Engine {
         on_event(Event::Restarted { reason });
         let response = self.get_with_fallback(&old, None, &attempt).await?;
         if response.status() != StatusCode::OK {
-            return Err(Error::Status(response.status()));
+            return Err(refused(response.status(), &old, &final_path, &attempt));
         }
         let state = state_from_response(old.url, &response);
         self.start(
@@ -1023,6 +1033,26 @@ pub(crate) async fn finish_download(
     Ok(Finished { file, bytes })
 }
 
+/// The error for a refusal (`status`) of a request made for `state`. A `401`
+/// without credentials in memory means the download needed a user name and
+/// password, which the state file never keeps (ADR-0004, rule 7): say so,
+/// rather than a bare 401.
+fn refused(
+    status: StatusCode,
+    state: &DownloadState,
+    final_path: &Path,
+    attempt: &Attempt,
+) -> Error {
+    if status == StatusCode::UNAUTHORIZED && attempt.credentials.is_none() {
+        Error::CredentialsNeeded {
+            url: state.url.clone(),
+            state_file: state_path(final_path),
+        }
+    } else {
+        Error::Status(status)
+    }
+}
+
 /// Fails with [`Error::NotEnoughSpace`] unless `needed` bytes fit in the free
 /// space of `dir`, counting `reusable` bytes already set aside there.
 async fn check_space(dir: &Path, needed: u64, reusable: u64) -> Result<(), Error> {
@@ -1079,13 +1109,40 @@ fn build_client(options: &Options, extra_roots: &[Vec<u8>]) -> Result<Client, Er
 
 fn parse_url(raw: &str) -> Result<Url, Error> {
     let url = Url::parse(raw).map_err(|err| Error::InvalidUrl {
-        url: raw.to_owned(),
+        url: without_userinfo(raw),
         reason: err.to_string(),
     })?;
     match url.scheme() {
         "http" | "https" => Ok(url),
         other => Err(Error::UnsupportedScheme(other.to_owned())),
     }
+}
+
+/// `raw` (a URL that did not parse) with what may be a user name and
+/// password hidden, so an error message never shows them: everything up to
+/// the last `@`, except a leading `http:` or `https:` and its slashes. It
+/// does not rely on `://`, which a mistyped URL may lack (`http:/u:p@h`) or
+/// have again later (`?next=https://…`); and anything before the `@` that
+/// is not that scheme may be a token (`TOKEN:x-oauth-basic@h`, `http//…`).
+/// A password may hold `/`, `#` or `?`, so the last `@` is the only safe
+/// end; an `@` later in the URL hides a little too much, never too little.
+fn without_userinfo(raw: &str) -> String {
+    let Some(at) = raw.rfind('@') else {
+        return raw.to_owned();
+    };
+    let head = &raw[..at];
+    let scheme = ["https:", "http:"].into_iter().find(|scheme| {
+        head.get(..scheme.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(scheme))
+    });
+    let keep = match scheme {
+        Some(scheme) => {
+            let rest = &head[scheme.len()..];
+            scheme.len() + rest.len() - rest.trim_start_matches('/').len()
+        }
+        None => 0,
+    };
+    format!("{}***{}", &raw[..keep], &raw[at..])
 }
 
 fn lock(file: &File, final_path: &Path) -> Result<(), Error> {
@@ -1437,6 +1494,45 @@ mod tests {
             None
         );
         assert_eq!(if_range_value(&Validator::default()), None);
+    }
+
+    #[test]
+    fn an_invalid_url_never_shows_its_password() {
+        // Review of #29: the whole URL, password included, was in the error.
+        for raw in [
+            "http://u:S3cret@127.0.0.1:99999/f.bin",
+            "http://u:pa#S3cret@127.0.0.1:1/f.bin",
+            "http://u:pa?S3cret@h:1/f",
+            "http://u:pa/S3cret@h:99999/f",
+            "u:S3cret@h:99999/f",
+        ] {
+            let message = parse_url(raw).unwrap_err().to_string();
+            assert!(!message.contains("S3cret"), "{message}");
+        }
+        assert_eq!(
+            without_userinfo("http://u:S3cret@h:99999/f"),
+            "http://***@h:99999/f"
+        );
+        // Review of #29: a `://` only later in the URL, or none at all.
+        for raw in [
+            "http:/u:S3cret@h:99999/f?next=https://x",
+            "http:/u:S3cret@h:99999/f#https://x",
+            "http:u:S3cret@h:99999/f",
+            // Third review of #29: a token as the user name, and no scheme
+            // or a mistyped one.
+            "S3cret_TOKEN:x-oauth-basic@h:99999/f",
+            "http//S3cret_TOKEN:x-oauth-basic@h:99999/f",
+            "https;//S3cret_TOKEN:x@h:99999/f",
+            "HTTPS://S3cret:x@h:99999/f",
+        ] {
+            assert!(!without_userinfo(raw).contains("S3cret"), "{raw}");
+            if let Err(err) = parse_url(raw) {
+                assert!(!err.to_string().contains("S3cret"), "{err}");
+            }
+        }
+        assert_eq!(without_userinfo("http://h:99999/f"), "http://h:99999/f");
+        assert_eq!(without_userinfo("http:/u:p@h:1/f"), "http:/***@h:1/f");
+        assert_eq!(without_userinfo("T:x@h:1/f"), "***@h:1/f");
     }
 
     #[test]

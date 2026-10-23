@@ -579,3 +579,69 @@ async fn a_windows_reserved_state_file_name_is_refused_with_the_exact_name() {
     let message = result.unwrap_err().to_string();
     assert!(message.contains("Zajil would write \"ab\""), "{message}");
 }
+
+/// Owner decision on #28: resuming a download that needed a user name and
+/// password gives a clear error instead of a bare 401 (the state file never
+/// keeps them).
+#[tokio::test]
+async fn resuming_a_download_that_needed_credentials_says_so() {
+    let server = TestServer::http();
+    let data = random_bytes(1_000_000, 95);
+    // "Basic " and the base64 of "u:p".
+    let spec = || {
+        FileSpec::new(data.clone())
+            .etag(Some("\"same\""))
+            .require_authorization("Basic dTpw")
+    };
+    server.put("/f.bin", spec().cut_after(300_000, 1));
+    let dir = tempfile::tempdir().unwrap();
+    let url = server.url("/f.bin").replacen("http://", "http://u:p@", 1);
+    let state_file = match engine().download(&url, dir.path(), &mut |_| {}).await {
+        Err(Error::Interrupted { state_file, .. }) => state_file,
+        other => panic!("expected an interruption, got {other:?}"),
+    };
+
+    let (result, _) = resume(&state_file).await;
+    match result.unwrap_err() {
+        Error::CredentialsNeeded {
+            url,
+            state_file: reported,
+        } => {
+            assert_eq!(url, server.url("/f.bin"), "no user name or password in it");
+            assert_eq!(reported, state_file);
+        }
+        other => panic!("expected CredentialsNeeded, got {other:?}"),
+    }
+    // Nothing was touched: the download can still be resumed by hand.
+    assert!(state_file.exists());
+    assert!(dir.path().join("f.bin.zajil-part").exists());
+}
+
+/// The same when the resume has to start over (here the `.zajil-part` is
+/// gone): the restart's request is refused with 401 too (review of #29:
+/// this path had no test).
+#[tokio::test]
+async fn a_restart_that_needs_credentials_says_so() {
+    let server = TestServer::http();
+    let data = random_bytes(1_000_000, 96);
+    let spec = || {
+        FileSpec::new(data.clone())
+            .etag(Some("\"same\""))
+            .require_authorization("Basic dTpw")
+    };
+    server.put("/f.bin", spec().cut_after(300_000, 1));
+    let dir = tempfile::tempdir().unwrap();
+    let url = server.url("/f.bin").replacen("http://", "http://u:p@", 1);
+    let state_file = match engine().download(&url, dir.path(), &mut |_| {}).await {
+        Err(Error::Interrupted { state_file, .. }) => state_file,
+        other => panic!("expected an interruption, got {other:?}"),
+    };
+    fs::remove_file(dir.path().join("f.bin.zajil-part")).unwrap();
+
+    let (result, events) = resume(&state_file).await;
+    assert_eq!(restarts(&events), [RestartReason::PartFileMissing]);
+    assert!(
+        matches!(result, Err(Error::CredentialsNeeded { .. })),
+        "{result:?}"
+    );
+}
