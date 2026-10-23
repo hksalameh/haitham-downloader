@@ -10,6 +10,8 @@
 //!   connections writing one download).
 //! - [`allocate`] and [`available_space`]: size a new download and check
 //!   that it fits before any data arrives.
+//! - [`create_private`] and [`only_owner_can_access`]: files that only
+//!   their owner may read (the state file can hold a token from the URL).
 //!
 //! On Windows, renames retry briefly when another program (antivirus, search
 //! indexer, OneDrive, backup tools) holds one of the files open, and pass
@@ -98,6 +100,28 @@ pub fn rename_noreplace(from: &Path, to: &Path) -> io::Result<()> {
 /// cannot be swapped between the check and the use.
 pub fn open_regular_nofollow(path: &Path, write: bool) -> io::Result<File> {
     imp::open_regular_nofollow(path, write)
+}
+
+/// Creates `path` for reading and writing, failing if anything already
+/// exists there (like `create_new`), with access for the current user only,
+/// from the moment it exists: mode `0600` on macOS and Linux, and on
+/// Windows a protected access list (nothing inherited from the folder) with
+/// one entry, full access for the current user. A rename in the same
+/// folder keeps this.
+///
+/// For files that may hold a secret: the state file keeps a token that is
+/// part of the URL (`?sig=…`), because resuming needs it (owner's decision
+/// on #28).
+pub fn create_private(path: &Path) -> io::Result<File> {
+    imp::create_private(path)
+}
+
+/// Whether nobody but the current user may open `path`, read from the file
+/// system itself: no permission bits for the group or others on macOS and
+/// Linux; on Windows a protected access list whose only entries allow the
+/// current user. For checks and tests of [`create_private`].
+pub fn only_owner_can_access(path: &Path) -> io::Result<bool> {
+    imp::only_owner_can_access(path)
 }
 
 /// Creates a symbolic link `link` pointing to the file `target`. Used by
@@ -248,12 +272,130 @@ mod imp {
         std::os::unix::fs::symlink(target, link)
     }
 
+    pub fn create_private(path: &Path) -> io::Result<File> {
+        // The mode applies at creation; the umask can only remove bits.
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(path)?;
+        // On macOS a file also inherits the folder's inheritable access
+        // list, whatever its mode (review of #30): remove it before any
+        // byte is written.
+        if let Err(err) = acl::remove(&file) {
+            drop(file);
+            let _ = std::fs::remove_file(path);
+            return Err(err);
+        }
+        Ok(file)
+    }
+
+    pub fn only_owner_can_access(path: &Path) -> io::Result<bool> {
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(path)?;
+        let meta = file.metadata()?;
+        Ok(meta.file_type().is_file() && meta.mode() & 0o077 == 0 && !acl::has_entries(&file)?)
+    }
+
     pub fn open_like_a_scanner(path: &Path) -> io::Result<File> {
         File::open(path)
     }
 
     pub fn write_at(file: &File, buf: &[u8], offset: u64) -> io::Result<()> {
         file.write_all_at(buf, offset)
+    }
+
+    /// macOS access lists (ACLs). A file inherits the inheritable entries
+    /// of its folder, and those can let others read it whatever its mode.
+    #[cfg(target_os = "macos")]
+    #[allow(unsafe_code)]
+    mod acl {
+        use std::ffi::{c_int, c_void};
+        use std::fs::File;
+        use std::io;
+        use std::os::unix::io::AsRawFd;
+
+        /// `acl_type_t` for the extended (NFSv4-style) list macOS uses.
+        const ACL_TYPE_EXTENDED: c_int = 0x0000_0100;
+        const ACL_FIRST_ENTRY: c_int = 0;
+
+        // From <sys/acl.h> in the macOS SDK (libSystem).
+        unsafe extern "C" {
+            fn acl_init(count: c_int) -> *mut c_void;
+            fn acl_free(object: *mut c_void) -> c_int;
+            fn acl_get_fd_np(fd: c_int, kind: c_int) -> *mut c_void;
+            fn acl_set_fd_np(fd: c_int, acl: *mut c_void, kind: c_int) -> c_int;
+            fn acl_get_entry(acl: *mut c_void, entry_id: c_int, entry: *mut *mut c_void) -> c_int;
+        }
+
+        /// Gives `file` an empty access list (like `chmod -N`).
+        pub fn remove(file: &File) -> io::Result<()> {
+            // SAFETY: asks for an empty list; checked for null below.
+            let empty = unsafe { acl_init(0) };
+            if empty.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            // SAFETY: the descriptor is open for the lifetime of `file`, and
+            // `empty` is a valid list, freed once after the call.
+            let result = unsafe { acl_set_fd_np(file.as_raw_fd(), empty, ACL_TYPE_EXTENDED) };
+            let err = io::Error::last_os_error();
+            // SAFETY: `empty` came from `acl_init` and is freed once.
+            unsafe { acl_free(empty) };
+            if result != 0 && !unsupported(&err) {
+                return Err(err);
+            }
+            Ok(())
+        }
+
+        /// File systems without access lists (FAT32 and exFAT on macOS)
+        /// refuse the calls: nothing can be inherited there (found by CI
+        /// on the FAT32 test volume).
+        fn unsupported(err: &io::Error) -> bool {
+            matches!(
+                err.raw_os_error(),
+                Some(libc::ENOTSUP) | Some(libc::EOPNOTSUPP)
+            )
+        }
+
+        /// Whether `file` has any access list entry at all.
+        pub fn has_entries(file: &File) -> io::Result<bool> {
+            // SAFETY: the descriptor is open for the lifetime of `file`.
+            let list = unsafe { acl_get_fd_np(file.as_raw_fd(), ACL_TYPE_EXTENDED) };
+            if list.is_null() {
+                let err = io::Error::last_os_error();
+                // No list at all, or none possible on this file system.
+                return if err.raw_os_error() == Some(libc::ENOENT) || unsupported(&err) {
+                    Ok(false)
+                } else {
+                    Err(err)
+                };
+            }
+            let mut entry = std::ptr::null_mut();
+            // SAFETY: `list` is a valid list; `entry` is a writable pointer.
+            let found = unsafe { acl_get_entry(list, ACL_FIRST_ENTRY, &mut entry) } == 0;
+            // SAFETY: `list` came from `acl_get_fd_np` and is freed once.
+            unsafe { acl_free(list) };
+            Ok(found)
+        }
+    }
+
+    /// Linux: a default access list of the folder is masked by the mode, so
+    /// `0600` leaves it no effect; nothing to remove.
+    #[cfg(not(target_os = "macos"))]
+    mod acl {
+        use std::fs::File;
+        use std::io;
+
+        pub fn remove(_file: &File) -> io::Result<()> {
+            Ok(())
+        }
+
+        pub fn has_entries(_file: &File) -> io::Result<bool> {
+            Ok(false)
+        }
     }
 
     fn c_path(path: &Path) -> io::Result<CString> {
@@ -429,17 +571,33 @@ mod imp {
     use std::os::windows::io::AsRawHandle;
     use std::path::Path;
 
+    use std::os::windows::io::{FromRawHandle, RawHandle};
+
     use windows_sys::Win32::Foundation::{
-        ERROR_ACCESS_DENIED, ERROR_INVALID_FUNCTION, ERROR_LOCK_VIOLATION, ERROR_NOT_SUPPORTED,
-        ERROR_SHARING_VIOLATION, HANDLE,
+        CloseHandle, ERROR_ACCESS_DENIED, ERROR_INVALID_FUNCTION, ERROR_LOCK_VIOLATION,
+        ERROR_NOT_SUPPORTED, ERROR_SHARING_VIOLATION, GENERIC_READ, GENERIC_WRITE, HANDLE,
+        INVALID_HANDLE_VALUE, LocalFree,
+    };
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+        GetNamedSecurityInfoW, SDDL_REVISION_1, SE_FILE_OBJECT,
+    };
+    use windows_sys::Win32::Security::{
+        ACCESS_ALLOWED_ACE, ACL, ACL_SIZE_INFORMATION, AclSizeInformation,
+        DACL_SECURITY_INFORMATION, EqualSid, GetAce, GetAclInformation,
+        GetSecurityDescriptorControl, GetTokenInformation, PSECURITY_DESCRIPTOR, PSID,
+        SE_DACL_PROTECTED, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER, TokenUser,
     };
     use windows_sys::Win32::Storage::FileSystem::{
-        BY_HANDLE_FILE_INFORMATION, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT,
-        FILE_SHARE_READ, GetDiskFreeSpaceExW, GetFileInformationByHandle,
+        BY_HANDLE_FILE_INFORMATION, CREATE_NEW, CreateFileW, FILE_ATTRIBUTE_NORMAL,
+        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_DELETE,
+        FILE_SHARE_READ, FILE_SHARE_WRITE, GetDiskFreeSpaceExW, GetFileInformationByHandle,
         MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
     };
     use windows_sys::Win32::System::IO::DeviceIoControl;
     use windows_sys::Win32::System::Ioctl::FSCTL_SET_SPARSE;
+    use windows_sys::Win32::System::SystemServices::ACCESS_ALLOWED_ACE_TYPE;
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
     use super::not_regular;
 
@@ -483,6 +641,209 @@ mod imp {
 
     pub fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
         std::os::windows::fs::symlink_file(target, link)
+    }
+
+    pub fn create_private(path: &Path) -> io::Result<File> {
+        // "D:P(A;;FA;;;<sid>)": a protected DACL (P: nothing inherited from
+        // the folder) with one entry allowing (A) all file access (FA) to
+        // the current user. Given to CreateFileW, so the file never exists
+        // with other permissions, not even for an instant.
+        let sddl = format!("D:P(A;;FA;;;{})", UserSid::current()?.to_text()?);
+        let sddl: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
+        let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `sddl` is a NUL-terminated UTF-16 string alive for the
+        // call, and `descriptor` a writable pointer; the size is optional.
+        let ok = unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl.as_ptr(),
+                SDDL_REVISION_1,
+                &mut descriptor,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let _descriptor = LocalMemory(descriptor);
+        let attributes = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: descriptor,
+            bInheritHandle: 0,
+        };
+        // `absolute` also removes `.` and `..`, which the `\\?\` form of
+        // long paths requires.
+        let path_w = wide(&std::path::absolute(path)?);
+        // SAFETY: `path_w` is a NUL-terminated UTF-16 string and
+        // `attributes` points to a valid descriptor, both alive for the
+        // call. The sharing mode is the one the standard library uses.
+        let handle = unsafe {
+            CreateFileW(
+                path_w.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                &attributes,
+                CREATE_NEW,
+                FILE_ATTRIBUTE_NORMAL,
+                std::ptr::null_mut(),
+            )
+        };
+        if handle == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `handle` is a valid file handle that nothing else owns;
+        // the `File` closes it.
+        Ok(unsafe { File::from_raw_handle(handle as RawHandle) })
+    }
+
+    pub fn only_owner_can_access(path: &Path) -> io::Result<bool> {
+        let user = UserSid::current()?;
+        let path_w = wide(&std::path::absolute(path)?);
+        let mut dacl: *mut ACL = std::ptr::null_mut();
+        let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        // SAFETY: `path_w` is a NUL-terminated UTF-16 string alive for the
+        // call; the outputs are writable pointers, the unused ones null.
+        let status = unsafe {
+            GetNamedSecurityInfoW(
+                path_w.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut dacl,
+                std::ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        if status != 0 {
+            return Err(io::Error::from_raw_os_error(status as i32));
+        }
+        let _descriptor = LocalMemory(descriptor);
+        if dacl.is_null() {
+            return Ok(false); // no list at all: everyone may open it
+        }
+        let (mut control, mut revision) = (0u16, 0u32);
+        // SAFETY: `descriptor` is the valid descriptor returned above; the
+        // outputs are writable.
+        if unsafe { GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if control & SE_DACL_PROTECTED == 0 {
+            return Ok(false); // entries from the folder may be added later
+        }
+        let mut size = ACL_SIZE_INFORMATION::default();
+        // SAFETY: `dacl` points into `descriptor`, alive here; `size` is a
+        // writable structure of the size given.
+        let ok = unsafe {
+            GetAclInformation(
+                dacl,
+                (&mut size as *mut ACL_SIZE_INFORMATION).cast(),
+                std::mem::size_of::<ACL_SIZE_INFORMATION>() as u32,
+                AclSizeInformation,
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        if size.AceCount == 0 {
+            return Ok(false);
+        }
+        for index in 0..size.AceCount {
+            let mut ace: *mut core::ffi::c_void = std::ptr::null_mut();
+            // SAFETY: `index` is below the entry count of `dacl`.
+            if unsafe { GetAce(dacl, index, &mut ace) } == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let ace = ace as *const ACCESS_ALLOWED_ACE;
+            // SAFETY: every entry starts with an ACE_HEADER; the SID is read
+            // only for allowing entries, which have this layout.
+            let allows_only_user = unsafe {
+                u32::from((*ace).Header.AceType) == ACCESS_ALLOWED_ACE_TYPE
+                    && EqualSid(std::ptr::addr_of!((*ace).SidStart) as PSID, user.as_psid()) != 0
+            };
+            if !allows_only_user {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Memory that a Windows call allocated with `LocalAlloc`.
+    struct LocalMemory(*mut core::ffi::c_void);
+
+    impl Drop for LocalMemory {
+        fn drop(&mut self) {
+            // SAFETY: the pointer came from a call documented to need
+            // `LocalFree`, and is freed once.
+            unsafe { LocalFree(self.0) };
+        }
+    }
+
+    /// The security identifier (SID) of the user running this process.
+    struct UserSid {
+        /// A `TOKEN_USER` and the SID it points to. `u64` keeps it aligned.
+        buffer: Vec<u64>,
+    }
+
+    impl UserSid {
+        fn current() -> io::Result<Self> {
+            let mut token: HANDLE = std::ptr::null_mut();
+            // SAFETY: the pseudo-handle of this process needs no closing;
+            // `token` is a writable handle.
+            if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let token = Handle(token);
+            let mut needed = 0u32;
+            // SAFETY: asks only for the size: no buffer, length 0.
+            unsafe {
+                GetTokenInformation(token.0, TokenUser, std::ptr::null_mut(), 0, &mut needed)
+            };
+            let mut buffer = vec![0u64; (needed as usize).div_ceil(8).max(1)];
+            // SAFETY: `buffer` has at least `needed` writable bytes.
+            let ok = unsafe {
+                GetTokenInformation(
+                    token.0,
+                    TokenUser,
+                    buffer.as_mut_ptr().cast(),
+                    needed,
+                    &mut needed,
+                )
+            };
+            if ok == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(UserSid { buffer })
+        }
+
+        fn as_psid(&self) -> PSID {
+            // SAFETY: the buffer holds the TOKEN_USER written by
+            // GetTokenInformation; its SID lives in the same buffer.
+            unsafe { (*(self.buffer.as_ptr() as *const TOKEN_USER)).User.Sid }
+        }
+
+        /// The SID as text, such as `S-1-5-21-…`.
+        fn to_text(&self) -> io::Result<String> {
+            let mut text: *mut u16 = std::ptr::null_mut();
+            // SAFETY: `as_psid` is a valid SID; `text` a writable pointer.
+            if unsafe { ConvertSidToStringSidW(self.as_psid(), &mut text) } == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            let _text = LocalMemory(text.cast());
+            // SAFETY: the call returned a NUL-terminated UTF-16 string.
+            let len = (0..).take_while(|&i| unsafe { *text.add(i) } != 0).count();
+            // SAFETY: `len` characters before the NUL are readable.
+            let units = unsafe { std::slice::from_raw_parts(text, len) };
+            Ok(String::from_utf16_lossy(units))
+        }
+    }
+
+    struct Handle(HANDLE);
+
+    impl Drop for Handle {
+        fn drop(&mut self) {
+            // SAFETY: the handle was opened by this module and is closed once.
+            unsafe { CloseHandle(self.0) };
+        }
     }
 
     pub fn open_like_a_scanner(path: &Path) -> io::Result<File> {
@@ -833,6 +1194,120 @@ mod tests {
             }
             Err(err) => panic!("CI must be able to create symbolic links: {err}"),
         }
+    }
+
+    #[test]
+    fn private_files_are_for_the_current_user_only() {
+        use std::io::Write;
+        let dir = tempdir();
+        let path = dir.join("state");
+        let mut file = create_private(&path).unwrap();
+        file.write_all(b"?sig=SECRET").unwrap();
+        drop(file);
+        assert_eq!(fs::read(&path).unwrap(), b"?sig=SECRET");
+        assert!(only_owner_can_access(&path).unwrap());
+        // Like `create_new`: never opens what is already there.
+        assert_eq!(
+            create_private(&path).unwrap_err().kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        // Replacing another file (as a state save does) keeps it private.
+        let old = dir.join("old");
+        fs::write(&old, b"old").unwrap();
+        replace_file(&path, &old).unwrap();
+        assert!(only_owner_can_access(&old).unwrap());
+        // Control: a file made the ordinary way is readable by others, so
+        // the check can say no.
+        let plain = dir.join("plain");
+        fs::write(&plain, b"x").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&plain, fs::Permissions::from_mode(0o644)).unwrap();
+        }
+        assert!(!only_owner_can_access(&plain).unwrap());
+        check_with_system_tool(&old);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Review of #30: on macOS a folder's inheritable access list made a
+    /// `0600` state file readable by everyone, and the check said it was
+    /// private. The test gives the folder such a list with `chmod +a`, the
+    /// way the reviewer did, and reads the result with `ls -le`.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn an_inherited_access_list_is_removed_on_macos() {
+        use std::process::Command;
+        let dir = tempdir();
+        let status = Command::new("/bin/chmod")
+            .args(["+a", "everyone allow read,file_inherit"])
+            .arg(&dir)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        // Control: a file made the ordinary way inherits it, and the check
+        // sees it even with mode 0600.
+        let plain = dir.join("plain");
+        fs::write(&plain, b"x").unwrap();
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&plain, fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let listing = |path: &Path| {
+            let out = Command::new("/bin/ls")
+                .arg("-le")
+                .arg(path)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).into_owned()
+        };
+        assert!(listing(&plain).contains("everyone"), "{}", listing(&plain));
+        assert!(!only_owner_can_access(&plain).unwrap());
+
+        let private = dir.join("state");
+        drop(create_private(&private).unwrap());
+        assert!(
+            !listing(&private).contains("everyone"),
+            "{}",
+            listing(&private)
+        );
+        assert!(only_owner_can_access(&private).unwrap());
+        // Still private after it replaces another file, as a save does.
+        let old = dir.join("old");
+        fs::write(&old, b"old").unwrap();
+        replace_file(&private, &old).unwrap();
+        assert!(!listing(&old).contains("everyone"), "{}", listing(&old));
+        assert!(only_owner_can_access(&old).unwrap());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Reads the permissions of `path` without our own code: the mode from
+    /// the standard library on macOS and Linux, and `icacls` on Windows,
+    /// which must list one entry, full access for `whoami`, not inherited.
+    #[cfg(unix)]
+    fn check_with_system_tool(path: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "{mode:o}");
+    }
+
+    #[cfg(windows)]
+    fn check_with_system_tool(path: &Path) {
+        use std::process::Command;
+        let run = |command: &mut Command| {
+            let out = command.output().unwrap();
+            assert!(out.status.success(), "{out:?}");
+            String::from_utf8_lossy(&out.stdout).to_lowercase()
+        };
+        let user = run(&mut Command::new("whoami")).trim().to_owned();
+        let listing = run(Command::new("icacls").arg(path));
+        let entries: Vec<&str> = listing.lines().filter(|l| l.contains(":(")).collect();
+        assert_eq!(entries.len(), 1, "{listing}");
+        assert!(
+            entries[0].contains(&format!("{user}:(f)")),
+            "{user}: {listing}"
+        );
+        assert!(!listing.contains("(i)"), "inherited entry: {listing}");
     }
 
     fn tempdir() -> PathBuf {
