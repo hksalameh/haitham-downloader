@@ -6,7 +6,8 @@
 //! `429` with `Retry-After`, `403` after some requests, redirects and
 //! dangerous names in `Content-Disposition`. Every request is logged with the
 //! number of body bytes the server sent, so tests can check what was asked
-//! for twice.
+//! for twice, with the connection it came on and how many responses for the
+//! same file were being sent at that moment.
 //!
 //! The server runs on its own thread and runtime, so it works from both
 //! synchronous and asynchronous tests, and stops when dropped.
@@ -17,8 +18,10 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -26,7 +29,7 @@ use bytes::Bytes;
 use http_body_util::channel::{Channel, Sender};
 use http_body_util::combinators::BoxBody;
 use http_body_util::{BodyExt, Empty};
-use hyper::body::Incoming;
+use hyper::body::{Frame, Incoming, SizeHint};
 use hyper::header::{self, HeaderValue};
 use hyper::service::service_fn;
 use hyper::{Method, Request, Response, StatusCode};
@@ -56,10 +59,15 @@ pub struct Failure {
 #[derive(Debug, Clone)]
 pub struct FileSpec {
     body: Bytes,
+    announced_length: Option<u64>,
     etag: Option<String>,
+    etag_per_connection: Option<(String, String)>,
+    authorization: Option<String>,
     last_modified: Option<String>,
     date: Option<String>,
     ranges: bool,
+    honor_ranges: bool,
+    ignore_if_range: bool,
     send_length: bool,
     content_disposition: Option<String>,
     cut_after: Option<(u64, usize)>,
@@ -67,6 +75,7 @@ pub struct FileSpec {
     bytes_per_sec: Option<u64>,
     fail_first: Vec<Failure>,
     forbid_after: Option<usize>,
+    replaced_after: Option<(usize, Box<FileSpec>)>,
 }
 
 impl FileSpec {
@@ -77,10 +86,15 @@ impl FileSpec {
         let version = NEXT_VERSION.fetch_add(1, Ordering::Relaxed);
         FileSpec {
             body: body.into(),
+            announced_length: None,
             etag: Some(format!("\"v{version}\"")),
+            etag_per_connection: None,
+            authorization: None,
             last_modified: Some(DEFAULT_LAST_MODIFIED.to_owned()),
             date: None,
             ranges: true,
+            honor_ranges: true,
+            ignore_if_range: false,
             send_length: true,
             content_disposition: None,
             cut_after: None,
@@ -88,6 +102,7 @@ impl FileSpec {
             bytes_per_sec: None,
             fail_first: Vec::new(),
             forbid_after: None,
+            replaced_after: None,
         }
     }
 
@@ -95,6 +110,45 @@ impl FileSpec {
     /// file, without `Accept-Ranges`.
     pub fn without_ranges(mut self) -> Self {
         self.ranges = false;
+        self.honor_ranges = false;
+        self
+    }
+
+    /// The server announces `Accept-Ranges: bytes` but ignores `Range` and
+    /// always answers `200` with the whole file.
+    pub fn ignore_ranges(mut self) -> Self {
+        self.honor_ranges = false;
+        self
+    }
+
+    /// Two machines behind one name, each with its own `ETag` for the same
+    /// bytes (as Apache or nginx compute them from the inode or the time):
+    /// odd-numbered connections see `odd`, even-numbered ones `even`, and
+    /// `If-Range` is checked against the one the connection sees.
+    pub fn etag_per_connection(mut self, odd: &str, even: &str) -> Self {
+        self.etag_per_connection = Some((odd.to_owned(), even.to_owned()));
+        self
+    }
+
+    /// Every GET without exactly this `Authorization` header gets
+    /// `401 Unauthorized` (for Basic, `"Basic "` and the base64 of
+    /// `user:password`).
+    pub fn require_authorization(mut self, value: &str) -> Self {
+        self.authorization = Some(value.to_owned());
+        self
+    }
+
+    /// The server serves `Range` requests even when `If-Range` does not
+    /// match (it ignores `If-Range`, as some servers do).
+    pub fn ignore_if_range(mut self) -> Self {
+        self.ignore_if_range = true;
+        self
+    }
+
+    /// `200` responses announce this `Content-Length` whatever the body is:
+    /// a server that lies about the size (for example a huge one).
+    pub fn announce_length(mut self, length: u64) -> Self {
+        self.announced_length = Some(length);
         self
     }
 
@@ -162,6 +216,14 @@ impl FileSpec {
         self
     }
 
+    /// After `gets` GET requests, the file is replaced by `next` (a new
+    /// version): the file changes on the server in the middle of a
+    /// download, at a known moment.
+    pub fn replaced_after(mut self, gets: usize, next: FileSpec) -> Self {
+        self.replaced_after = Some((gets, Box::new(next)));
+        self
+    }
+
     pub fn body(&self) -> &Bytes {
         &self.body
     }
@@ -186,6 +248,14 @@ pub struct RequestRecord {
     pub bytes_sent: u64,
     /// The TLS version of the connection (`"TLSv1_3"`), or `None` for HTTP.
     pub tls_version: Option<String>,
+    /// The `Authorization` header, if any.
+    pub authorization: Option<String>,
+    /// Number of the TCP connection, counted from 1 in the order the server
+    /// accepted them. Requests on the same connection share it (keep-alive).
+    pub connection: u64,
+    /// Bodies of this file being sent at the moment this request arrived,
+    /// this one included (0 for a response without a body).
+    pub concurrent: usize,
 }
 
 struct LogEntry {
@@ -196,6 +266,58 @@ struct LogEntry {
 struct Served {
     spec: FileSpec,
     gets: usize,
+    sending: Arc<Sending>,
+}
+
+/// Bodies of one file being sent right now, and the most at once.
+#[derive(Default)]
+struct Sending {
+    now: AtomicUsize,
+    most: AtomicUsize,
+}
+
+impl Sending {
+    /// Counts a body until the returned guard is dropped, which hyper does
+    /// when the body is finished or the client goes away.
+    fn start(self: &Arc<Self>) -> (usize, SendingGuard) {
+        let now = self.now.fetch_add(1, Ordering::SeqCst) + 1;
+        self.most.fetch_max(now, Ordering::SeqCst);
+        (now, SendingGuard(self.clone()))
+    }
+}
+
+struct SendingGuard(Arc<Sending>);
+
+impl Drop for SendingGuard {
+    fn drop(&mut self) {
+        self.0.now.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// A response body that is counted in [`Sending`] while it exists.
+struct Counted {
+    inner: Body,
+    _guard: SendingGuard,
+}
+
+impl hyper::body::Body for Counted {
+    type Data = Bytes;
+    type Error = BoxError;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, BoxError>>> {
+        Pin::new(&mut self.inner).poll_frame(cx)
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        self.inner.size_hint()
+    }
 }
 
 #[derive(Default)]
@@ -308,9 +430,23 @@ impl TestServer {
     /// Serves `spec` at `path`, replacing any previous file there. A new
     /// [`FileSpec`] has a new `ETag`, so this simulates a changed file.
     pub fn put(&self, path: &str, spec: FileSpec) {
+        self.lock().files.insert(
+            path.to_owned(),
+            Served {
+                spec,
+                gets: 0,
+                sending: Arc::default(),
+            },
+        );
+    }
+
+    /// The most bodies of the file at `path` that were sent at the same
+    /// time, since it was [`put`](Self::put).
+    pub fn most_concurrent(&self, path: &str) -> usize {
         self.lock()
             .files
-            .insert(path.to_owned(), Served { spec, gets: 0 });
+            .get(path)
+            .map_or(0, |served| served.sending.most.load(Ordering::SeqCst))
     }
 
     /// Answers requests for `from` with a redirect to `to` (a path or URL).
@@ -372,6 +508,7 @@ async fn serve(
     };
     let _ = bound.send(listener.local_addr());
 
+    let mut connections = 0u64;
     loop {
         let stream = tokio::select! {
             _ = &mut shutdown => return,
@@ -382,12 +519,14 @@ async fn serve(
         };
         let shared = shared.clone();
         let tls = tls.clone();
+        connections += 1;
+        let connection = connections;
         tokio::spawn(async move {
             let service = |tls_version: Option<String>| {
                 service_fn(move |req| {
                     let shared = shared.clone();
                     let tls_version = tls_version.clone();
-                    async move { Ok::<_, Infallible>(handle(req, &shared, tls_version)) }
+                    async move { Ok::<_, Infallible>(handle(req, &shared, tls_version, connection)) }
                 })
             };
             let http = hyper::server::conn::http1::Builder::new();
@@ -419,6 +558,7 @@ fn handle(
     req: Request<Incoming>,
     shared: &Mutex<Shared>,
     tls_version: Option<String>,
+    connection: u64,
 ) -> Response<Body> {
     let mut shared = shared.lock().unwrap_or_else(|e| e.into_inner());
     let header = |name| {
@@ -435,9 +575,12 @@ fn handle(
         path: path.clone(),
         range: header(header::RANGE),
         if_range: header(header::IF_RANGE),
+        authorization: header(header::AUTHORIZATION),
         status: 0,
         bytes_sent: 0,
         tls_version,
+        connection,
+        concurrent: 0,
     };
 
     let response = if let Some((to, status)) = shared.redirects.get(&path) {
@@ -447,17 +590,43 @@ fn handle(
             .body(empty())
             .unwrap()
     } else if let Some(served) = shared.files.get_mut(&path) {
+        if let Some((after, next)) = &served.spec.replaced_after
+            && !is_head
+            && served.gets >= *after
+        {
+            served.spec = (**next).clone();
+            served.gets = 0;
+        }
         let get_index = served.gets;
         if !is_head {
             served.gets += 1;
         }
-        respond(
+        let response = respond(
             &served.spec,
             &record,
             is_head,
             get_index,
             bytes_sent.clone(),
-        )
+        );
+        // Count the bodies of this file while they are being sent.
+        if !is_head
+            && matches!(
+                response.status(),
+                StatusCode::OK | StatusCode::PARTIAL_CONTENT
+            )
+        {
+            let (now, guard) = served.sending.start();
+            record.concurrent = now;
+            response.map(|inner| {
+                Counted {
+                    inner,
+                    _guard: guard,
+                }
+                .boxed()
+            })
+        } else {
+            response
+        }
     } else {
         status_only(StatusCode::NOT_FOUND)
     };
@@ -474,6 +643,25 @@ fn respond(
     get_index: usize,
     bytes_sent: Arc<AtomicU64>,
 ) -> Response<Body> {
+    let per_connection;
+    let spec = match &spec.etag_per_connection {
+        Some((odd, even)) => {
+            let etag = if record.connection % 2 == 1 {
+                odd
+            } else {
+                even
+            };
+            per_connection = FileSpec {
+                etag: Some(etag.clone()),
+                ..spec.clone()
+            };
+            &per_connection
+        }
+        None => spec,
+    };
+    if !is_head && spec.authorization.is_some() && record.authorization != spec.authorization {
+        return status_only(StatusCode::UNAUTHORIZED);
+    }
     if !is_head {
         if spec.forbid_after.is_some_and(|n| get_index >= n) {
             return status_only(StatusCode::FORBIDDEN);
@@ -488,7 +676,9 @@ fn respond(
     }
 
     let total = spec.body.len() as u64;
-    let range = if spec.ranges && if_range_matches(spec, record.if_range.as_deref()) {
+    let range = if spec.honor_ranges
+        && (spec.ignore_if_range || if_range_matches(spec, record.if_range.as_deref()))
+    {
         record.range.as_deref().map(|r| parse_range(r, total))
     } else {
         None
@@ -530,7 +720,11 @@ fn respond(
         }
     };
     if spec.send_length {
-        builder = builder.header(header::CONTENT_LENGTH, end - start);
+        let length = match spec.announced_length {
+            Some(announced) if status == StatusCode::OK => announced,
+            _ => end - start,
+        };
+        builder = builder.header(header::CONTENT_LENGTH, length);
     }
     builder = builder.status(status);
     if is_head {
@@ -543,11 +737,19 @@ fn respond(
         .filter(|&(_, times)| get_index < times)
         .map(|(bytes, _)| bytes);
     let (sender, channel) = Channel::<Bytes, BoxError>::new(1);
+    // A response that announced more than it has stalls at the end of what
+    // it has, keeping the connection open. Closing it would make Windows
+    // send a reset that can drop the headers before the client reads them.
+    let short = spec
+        .announced_length
+        .filter(|&announced| status == StatusCode::OK && announced > body.len() as u64)
+        .map(|_| body.len() as u64);
+    let stall = [spec.stall_after, short].into_iter().flatten().min();
     tokio::spawn(stream_body(
         sender,
         body,
         cut,
-        spec.stall_after,
+        stall,
         spec.bytes_per_sec,
         bytes_sent,
     ));
@@ -590,7 +792,7 @@ async fn stream_body(
         }
     }
 
-    if offset == body.len() {
+    if offset == body.len() && stall.is_none_or(|stall| stall as usize > offset) {
         return; // complete
     }
     if cut.is_some_and(|c| c as usize == offset) {

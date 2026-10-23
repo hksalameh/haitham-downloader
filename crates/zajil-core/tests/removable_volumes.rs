@@ -29,7 +29,8 @@ fn volumes() -> Vec<(&'static str, PathBuf)> {
 #[tokio::test]
 async fn downloads_finish_next_to_a_taken_name() {
     let server = TestServer::http();
-    let data = random_bytes(1 << 20, 7);
+    // 4 MiB: big enough to be split over several connections (M2).
+    let data = random_bytes(4 << 20, 7);
     server.put("/f.bin", FileSpec::new(data.clone()));
     let engine = Engine::new(Options::default()).unwrap();
 
@@ -50,6 +51,13 @@ async fn downloads_finish_next_to_a_taken_name() {
             .await
             .unwrap_or_else(|e| panic!("{name}: {e}"));
         assert_eq!(second.file, dir.join("f (1).bin"), "{name}");
+        // The file was split over several connections on this volume too.
+        let ranged = server
+            .gets("/f.bin")
+            .iter()
+            .filter(|r| r.range.is_some())
+            .count();
+        assert!(ranged >= 2, "{name}: {ranged} range requests");
         for file in [&first.file, &second.file] {
             assert_eq!(
                 sha256_hex(&fs::read(file).unwrap()),
