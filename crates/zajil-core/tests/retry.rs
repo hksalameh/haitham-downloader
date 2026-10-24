@@ -383,3 +383,34 @@ async fn cancelling_while_retrying_leaves_a_resumable_download_or_nothing() {
         fs::remove_file(&done.file).unwrap();
     }
 }
+
+/// A server that is gone: port 1 on the loopback, where nothing listens
+/// and no test server can be (they take free high ports; a port freed for
+/// this could be handed to one: review of #51).
+const GONE: &str = "http://127.0.0.1:1/f.bin";
+
+/// #50: a server that is gone is tried a bounded number of times, with the
+/// default settings a user has, then given up: never forever. Counted by
+/// the retries the engine reports, not by time (review of #51: a refused
+/// connection itself can take seconds on Windows).
+#[tokio::test]
+async fn a_server_that_is_gone_is_given_up_after_its_tries() {
+    let dir = tempfile::tempdir().unwrap();
+    let started = Instant::now();
+    let mut retries = 0;
+    let result = Engine::new(Options::default())
+        .unwrap()
+        .download(GONE, dir.path(), &mut |event| {
+            if matches!(event, Event::Retrying { .. }) {
+                retries += 1;
+            }
+        })
+        .await;
+    assert!(result.is_err(), "{result:?}");
+    assert_eq!(retries, zajil_core::DEFAULT_TRIES - 1, "{result:?}");
+    assert!(
+        started.elapsed() < Duration::from_secs(60),
+        "{:?}",
+        started.elapsed()
+    );
+}
