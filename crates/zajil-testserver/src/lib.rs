@@ -392,6 +392,9 @@ struct Shared {
     prefix: String,
     /// Those requests (`GET /f.bin`): answered 404, never counted.
     strays: Vec<String>,
+    /// Every connection: who it came from and how it ended, for the report
+    /// printed when a test fails (#50).
+    connections: Vec<ConnectionLog>,
     files: HashMap<String, Served>,
     redirects: HashMap<String, (String, u16)>,
     log: Vec<LogEntry>,
@@ -456,6 +459,7 @@ impl TestServer {
             started: std::time::Instant::now(),
             prefix: random_prefix(),
             strays: Vec::new(),
+            connections: Vec::new(),
             files: HashMap::new(),
             redirects: HashMap::new(),
             log: Vec::new(),
@@ -514,6 +518,51 @@ impl TestServer {
     /// prefix), for tests that write HTTP by hand.
     pub fn path(&self, path: &str) -> String {
         format!("{}{path}", self.lock().prefix)
+    }
+
+    /// Everything this server saw, for a failed test (printed by `Drop`
+    /// when the test panics): each request in order, with its range,
+    /// status and bytes; each connection, with who opened it and how it
+    /// ended; and the stray requests.
+    pub fn report(&self) -> String {
+        // One look at the log, so requests and connections agree (review
+        // of #52: a request could come between two looks).
+        let shared = self.lock();
+        let mut out = format!("test server {} saw:\n", self.base);
+        for (n, entry) in shared.log.iter().enumerate() {
+            let r = &entry.record;
+            out.push_str(&format!(
+                "  request {}: {} {} range={:?} if_range={:?} status={} bytes_written={} conn={} at={:?}\n",
+                n + 1,
+                r.method,
+                r.path,
+                r.range,
+                r.if_range,
+                r.status,
+                entry.bytes_sent.load(Ordering::SeqCst),
+                r.connection,
+                r.at
+            ));
+        }
+        for c in &shared.connections {
+            let ended = match &c.ended {
+                Some((at, how)) => format!("ended at {at:?}: {how}"),
+                // The client may already see it closed: its end is written
+                // down just after the socket closes.
+                None => "still open (or closing)".to_owned(),
+            };
+            out.push_str(&format!(
+                "  connection {} from {} at {:?}, {ended}\n",
+                c.number, c.peer, c.accepted
+            ));
+        }
+        for s in &shared.strays {
+            out.push_str(&format!("  stray request (404, not counted): {s}\n"));
+        }
+        if shared.log.is_empty() && shared.connections.is_empty() && shared.strays.is_empty() {
+            out.push_str("  (nothing)\n");
+        }
+        out
     }
 
     /// Requests that did not use this server's prefix, oldest first: they
@@ -578,6 +627,18 @@ impl TestServer {
 
 impl Drop for TestServer {
     fn drop(&mut self) {
+        // A test failed with this server alive: say everything it saw, so a
+        // failure that comes once in many runs leaves its evidence the first
+        // time (#50). Shown by the test harness under the failed test.
+        if std::thread::panicking() {
+            // `eprintln!`, not a write to `std::io::stderr()`: only the
+            // macros go to the harness's capture, which shows them under the
+            // failed test (a direct write went past it, review of #52). The
+            // cost: with `--nocapture` and a stderr that is a closed pipe the
+            // macro panics, and a panic during a panic aborts the binary.
+            // Neither happens in CI.
+            eprintln!("{}", self.report());
+        }
         if let Some(tx) = self.shutdown.take() {
             let _ = tx.send(());
         }
@@ -608,14 +669,26 @@ async fn serve(
         let stream = tokio::select! {
             _ = &mut shutdown => return,
             accepted = listener.accept() => match accepted {
-                Ok((stream, _)) => stream,
+                Ok(accepted) => accepted,
                 Err(_) => continue,
             },
         };
+        let (stream, peer) = stream;
         let shared = shared.clone();
         let tls = tls.clone();
         connections += 1;
         let connection = connections;
+        {
+            let mut log = shared.lock().unwrap_or_else(|e| e.into_inner());
+            let at = log.started.elapsed();
+            log.connections.push(ConnectionLog {
+                number: connection,
+                peer: peer.to_string(),
+                accepted: at,
+                ended: None,
+            });
+        }
+        let shared_for_log = shared.clone();
         tokio::spawn(async move {
             let service = |tls_version: Option<String>| {
                 service_fn(move |req| {
@@ -625,25 +698,31 @@ async fn serve(
                 })
             };
             let http = hyper::server::conn::http1::Builder::new();
-            match tls {
-                Some(acceptor) => {
-                    // A client that rejects our certificate ends here.
-                    if let Ok(stream) = acceptor.accept(stream).await {
+            let how = match tls {
+                Some(acceptor) => match acceptor.accept(stream).await {
+                    Ok(stream) => {
                         let version = stream
                             .get_ref()
                             .1
                             .protocol_version()
                             .map(|v| format!("{v:?}"));
-                        let _ = http
-                            .serve_connection(TokioIo::new(stream), service(version))
-                            .await;
+                        ended_how(
+                            http.serve_connection(TokioIo::new(stream), service(version))
+                                .await,
+                        )
                     }
-                }
-                None => {
-                    let _ = http
-                        .serve_connection(TokioIo::new(stream), service(None))
-                        .await;
-                }
+                    // A client that rejects our certificate ends here.
+                    Err(err) => format!("TLS handshake failed: {err}"),
+                },
+                None => ended_how(
+                    http.serve_connection(TokioIo::new(stream), service(None))
+                        .await,
+                ),
+            };
+            let mut log = shared_for_log.lock().unwrap_or_else(|e| e.into_inner());
+            let at = log.started.elapsed();
+            if let Some(entry) = log.connections.iter_mut().find(|c| c.number == connection) {
+                entry.ended = Some((at, how));
             }
         });
     }
@@ -1121,6 +1200,41 @@ pub fn sha256_hex(data: &[u8]) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+/// One connection, for [`TestServer::report`].
+#[derive(Debug, Clone)]
+struct ConnectionLog {
+    number: u64,
+    peer: String,
+    accepted: Duration,
+    /// When and how it ended, if it has.
+    ended: Option<(Duration, String)>,
+}
+
+/// How a connection ended, in words: normally (the client closed it, or
+/// the server stopped), or with hyper's error and its causes (a reset from
+/// the client shows its I/O error kind, such as `ConnectionReset`).
+fn ended_how(result: Result<(), hyper::Error>) -> String {
+    match result {
+        Ok(()) => "normally".to_owned(),
+        Err(err) => {
+            let mut text = format!(
+                "{err} (incomplete message: {}, body write aborted: {})",
+                err.is_incomplete_message(),
+                err.is_body_write_aborted()
+            );
+            let mut source = std::error::Error::source(&err);
+            while let Some(cause) = source {
+                match cause.downcast_ref::<io::Error>() {
+                    Some(io) => text.push_str(&format!(" <- {:?}: {io}", io.kind())),
+                    None => text.push_str(&format!(" <- {cause}")),
+                }
+                source = cause.source();
+            }
+            text
+        }
+    }
 }
 
 /// `/` and 16 hex digits, different for every server.
