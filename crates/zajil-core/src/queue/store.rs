@@ -106,6 +106,11 @@ pub struct Item {
     /// own (the program's limit still applies).
     #[serde(default)]
     pub limit: Option<u64>,
+    /// Added without a folder of its own: the finished file goes to its
+    /// category's folder (M4), and to `dir` when it has none. `false` when
+    /// absent.
+    #[serde(default)]
+    pub categorize: bool,
     /// RFC 3339 time in UTC.
     pub added_at: String,
 }
@@ -165,6 +170,13 @@ pub enum StoreError {
     Url(#[from] crate::Error),
     #[error("another `zajil queue run` is already running")]
     RunnerBusy,
+    #[error(
+        "this change would make the queues file {bytes} bytes long, more than the \
+         {MAX_FILE_BYTES} bytes Zajil reads back; nothing was changed"
+    )]
+    TooLarge { bytes: usize },
+    #[error("refusing this change: {0}; nothing was changed")]
+    Refused(String),
 }
 
 impl QueuesFile {
@@ -220,6 +232,13 @@ impl QueuesFile {
         if !parsed.username().is_empty() || parsed.password().is_some() {
             return Err(StoreError::Credentials);
         }
+        // Shown by `queue list` and kept in exports: nothing that drives a
+        // terminal or reorders text (review of #41, round 4).
+        if url.chars().any(crate::category::is_unsafe_in_url) {
+            return Err(StoreError::Refused(
+                "the URL has control characters or direction marks".into(),
+            ));
+        }
         let id = self.next_id;
         let item = Item {
             id,
@@ -230,6 +249,7 @@ impl QueuesFile {
             file: None,
             error: None,
             limit: None,
+            categorize: false,
             added_at: now_rfc3339(),
         };
         self.queue_or_new(queue)?.items.push(item);
@@ -298,7 +318,10 @@ pub fn check_name(name: &str) -> Result<(), StoreError> {
     let ok = (1..=MAX_NAME_CHARS).contains(&count)
         && name
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_');
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        // The Hangul fillers count as letters but show nothing (review of
+        // #41, round 4).
+        && !crate::category::has_hidden(name);
     if ok {
         Ok(())
     } else {
@@ -353,8 +376,8 @@ impl QueueStore {
         if bytes.len() as u64 > MAX_FILE_BYTES {
             return Err(corrupt("the file is too large".into()));
         }
-        let value: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|e| corrupt(e.to_string()))?;
+        let value: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|e| corrupt(crate::category::printable(&e.to_string())))?;
         if value.get("format").and_then(|v| v.as_str()) != Some(FORMAT) {
             return Err(StoreError::NotAQueuesFile(path));
         }
@@ -369,8 +392,8 @@ impl QueueStore {
         if stored != checksum_of(&value) {
             return Err(corrupt("its checksum does not match".into()));
         }
-        let queues: QueuesFile =
-            serde_json::from_value(value).map_err(|e| corrupt(e.to_string()))?;
+        let queues: QueuesFile = serde_json::from_value(value)
+            .map_err(|e| corrupt(crate::category::printable(&e.to_string())))?;
         queues.check_consistency().map_err(corrupt)?;
         Ok(queues)
     }
@@ -386,13 +409,21 @@ impl QueueStore {
         let _lock = self.lock(LOCK_NAME, true)?;
         let mut queues = self.load()?;
         let result = change(&mut queues)?;
+        // Never write a file that `load` would refuse (review of #41: a
+        // large import made the queues unreadable, the user's own too).
+        queues.check_consistency().map_err(StoreError::Refused)?;
         queues.format = FORMAT.to_owned();
         queues.schema_version = SCHEMA_VERSION;
         queues.updated_at = now_rfc3339();
         queues.checksum = String::new();
-        queues.checksum = checksum_of(&serde_json::to_value(&queues).expect("serializes"));
+        // A path that is not valid text cannot be written: an error, not
+        // a panic (review of #41, round 2).
+        queues.checksum = checksum_of(&serde_json::to_value(&queues).map_err(io::Error::other)?);
         let mut json = serde_json::to_vec_pretty(&queues).map_err(io::Error::other)?;
         json.push(b'\n');
+        if json.len() as u64 > MAX_FILE_BYTES {
+            return Err(StoreError::TooLarge { bytes: json.len() });
+        }
         write_safely(&self.path(), &json)?;
         Ok(result)
     }
