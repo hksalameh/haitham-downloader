@@ -96,6 +96,22 @@ fn close_cleanly(app: &mut App, how: Close) {
         "it exited without saying that the downloads stopped"
     );
     assert!(took < Duration::from_millis(4500), "closing took {took:?}");
+    // Which path stopped the downloads at the end of a Windows session:
+    // Zajil's own hook (`zajil_platform::session`), or tao's handling that
+    // ends in `RunEvent::Exit` (both stop them the same way). Shown in the
+    // CI log (the step runs with --nocapture; review of #59).
+    #[cfg(windows)]
+    if matches!(how, Close::SessionEnd) {
+        let hook = app.said("asked to stop (the Windows session is ending)");
+        println!(
+            "the Windows session end was handled by {}",
+            if hook {
+                "zajil_platform::session"
+            } else {
+                "tao (RunEvent::Exit)"
+            }
+        );
+    }
 }
 
 /// How the app is asked to close.
@@ -107,6 +123,12 @@ enum Close {
     /// macOS: the system's quit event (Cmd+Q, the Dock's Quit, a logout).
     #[cfg(target_os = "macos")]
     Quit,
+    /// Windows: the session ends (a shutdown, restart or logoff), as the
+    /// system says it to the window: `WM_QUERYENDSESSION`, then
+    /// `WM_ENDSESSION` (#49). Sent through PowerShell, so the test needs no
+    /// unsafe code; a real shutdown cannot be run by a test.
+    #[cfg(windows)]
+    SessionEnd,
 }
 
 fn ask_to_close(child: &Child, how: Close) {
@@ -116,6 +138,33 @@ fn ask_to_close(child: &Child, how: Close) {
         Close::Ask => Command::new("kill").args(["-TERM", &pid]).status(),
         #[cfg(windows)]
         Close::Ask => Command::new("taskkill").args(["/PID", &pid]).status(),
+        // As Windows does at a real shutdown: both messages to every
+        // top-level window of the process (tao's hidden one, the main
+        // window...), not only to the one `MainWindowHandle` picks
+        // (review of #59).
+        #[cfg(windows)]
+        Close::SessionEnd => Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "Add-Type -TypeDefinition 'using System; using System.Collections.Generic; using System.Runtime.InteropServices; \
+                     public static class ZajilSession {{ \
+                       public delegate bool EnumProc(IntPtr h, IntPtr l); \
+                       [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumProc f, IntPtr l); \
+                       [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid); \
+                       [DllImport(\"user32.dll\")] public static extern IntPtr SendMessageTimeoutW(IntPtr h, uint m, IntPtr w, IntPtr l, uint f, uint t, out IntPtr r); \
+                       public static void Send(uint pid) {{ \
+                         var all = new List<IntPtr>(); \
+                         EnumWindows((h, l) => {{ uint p; GetWindowThreadProcessId(h, out p); if (p == pid) all.Add(h); return true; }}, IntPtr.Zero); \
+                         IntPtr r; \
+                         foreach (var h in all) SendMessageTimeoutW(h, 0x11, IntPtr.Zero, IntPtr.Zero, 2, 5000, out r); \
+                         foreach (var h in all) SendMessageTimeoutW(h, 0x16, (IntPtr)1, IntPtr.Zero, 2, 10000, out r); \
+                         Console.WriteLine(\"session end sent to \" + all.Count + \" top-level windows\"); if (all.Count == 0) Environment.Exit(1); }} }}'; \
+                     [ZajilSession]::Send({pid})"
+                ),
+            ])
+            .status(),
         #[cfg(target_os = "macos")]
         Close::Quit => Command::new("osascript")
             .args([
@@ -245,6 +294,14 @@ fn closed_during_a_download_it_goes_on_when_opened_again() {
 #[ignore = "needs the built app (ZAJIL_DESKTOP_APP); run by CI after the build"]
 fn quit_during_a_download_it_goes_on_when_opened_again() {
     close_in_the_middle_then_open_again(Some(Close::Quit));
+}
+
+/// Windows: a shutdown, restart or logoff during a download (#49).
+#[cfg(windows)]
+#[test]
+#[ignore = "needs the built app (ZAJIL_DESKTOP_APP); run by CI after the build"]
+fn session_end_during_a_download_it_goes_on_when_opened_again() {
+    close_in_the_middle_then_open_again(Some(Close::SessionEnd));
 }
 
 #[test]

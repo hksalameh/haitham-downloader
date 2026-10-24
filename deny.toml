@@ -23,6 +23,14 @@ ignore = [
   # glib-macros 0.18 (gtk-rs), which Tauri 2 uses on Linux (muda, tao). No
   # code of it is in the program. Gone when Tauri moves to a newer gtk-rs.
   { id = "RUSTSEC-2024-0370", reason = "build-time proc-macro of gtk-rs 0.18 under Tauri 2 on Linux; unmaintained, no vulnerability" },
+  # "Unmaintained", not vulnerabilities: zbus_names, zvariant and
+  # zvariant_derive (one advisory each) were folded into zbus itself, so
+  # they get no more releases of their own. zbus 5 (D-Bus on Linux) still
+  # uses them, through tauri-plugin-notification (notify-rust). No upgrade
+  # exists yet; gone when the plugin moves to a newer zbus.
+  { id = "RUSTSEC-2026-0370", reason = "one of zbus_names, zvariant, zvariant_derive: folded into zbus, used by zbus 5 under tauri-plugin-notification on Linux; unmaintained, no vulnerability" },
+  { id = "RUSTSEC-2026-0371", reason = "one of zbus_names, zvariant, zvariant_derive: folded into zbus, used by zbus 5 under tauri-plugin-notification on Linux; unmaintained, no vulnerability" },
+  { id = "RUSTSEC-2026-0372", reason = "one of zbus_names, zvariant, zvariant_derive: folded into zbus, used by zbus 5 under tauri-plugin-notification on Linux; unmaintained, no vulnerability" },
 ]
 
 [licenses]
