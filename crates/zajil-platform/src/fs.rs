@@ -605,6 +605,9 @@ mod imp {
 }
 
 #[cfg(windows)]
+pub(crate) use imp::{owner_only, runs_as_current_user};
+
+#[cfg(windows)]
 #[allow(unsafe_code)]
 mod imp {
     use std::fs::{File, OpenOptions};
@@ -640,7 +643,9 @@ mod imp {
     use windows_sys::Win32::System::IO::DeviceIoControl;
     use windows_sys::Win32::System::Ioctl::FSCTL_SET_SPARSE;
     use windows_sys::Win32::System::SystemServices::ACCESS_ALLOWED_ACE_TYPE;
-    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
 
     use super::not_regular;
 
@@ -687,12 +692,13 @@ mod imp {
         std::os::windows::fs::symlink_file(target, link)
     }
 
-    pub fn create_private(path: &Path) -> io::Result<File> {
-        // "D:P(A;;FA;;;<sid>)": a protected DACL (P: nothing inherited from
-        // the folder) with one entry allowing (A) all file access (FA) to
-        // the current user. Given to CreateFileW, so the file never exists
-        // with other permissions, not even for an instant.
-        let sddl = format!("D:P(A;;FA;;;{})", UserSid::current()?.to_text()?);
+    /// Security attributes that allow `access` (SDDL rights, such as `FA`
+    /// for all file access or `GA` for all generic access) to the current
+    /// user only: "D:P(A;;<access>;;;<sid>)", a protected DACL (P: nothing
+    /// inherited) with one entry allowing (A) it. Kept alive by the
+    /// returned guard, which must outlive every use of the attributes.
+    pub(crate) fn owner_only(access: &str) -> io::Result<(SECURITY_ATTRIBUTES, LocalMemory)> {
+        let sddl = format!("D:P(A;;{access};;;{})", UserSid::current()?.to_text()?);
         let sddl: Vec<u16> = sddl.encode_utf16().chain(Some(0)).collect();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
         // SAFETY: `sddl` is a NUL-terminated UTF-16 string alive for the
@@ -708,12 +714,34 @@ mod imp {
         if ok == 0 {
             return Err(io::Error::last_os_error());
         }
-        let _descriptor = LocalMemory(descriptor);
+        let guard = LocalMemory(descriptor);
         let attributes = SECURITY_ATTRIBUTES {
             nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
             lpSecurityDescriptor: descriptor,
             bInheritHandle: 0,
         };
+        Ok((attributes, guard))
+    }
+
+    /// Whether the process `pid` runs as the current user (the other end
+    /// of a pipe, `zajil_platform::ipc`).
+    pub(crate) fn runs_as_current_user(pid: u32) -> io::Result<bool> {
+        // SAFETY: plain call; a null handle is checked below.
+        let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if process.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        let process = Handle(process);
+        let (ours, theirs) = (UserSid::current()?, UserSid::of_process(process.0)?);
+        // SAFETY: both are valid SIDs, alive for the call.
+        Ok(unsafe { EqualSid(ours.as_psid(), theirs.as_psid()) } != 0)
+    }
+
+    pub fn create_private(path: &Path) -> io::Result<File> {
+        // All file access (FA) for the current user only, given to
+        // CreateFileW, so the file never exists with other permissions,
+        // not even for an instant.
+        let (attributes, _descriptor) = owner_only("FA")?;
         // `absolute` also removes `.` and `..`, which the `\\?\` form of
         // long paths requires.
         let path_w = wide(&std::path::absolute(path)?);
@@ -812,7 +840,7 @@ mod imp {
     }
 
     /// Memory that a Windows call allocated with `LocalAlloc`.
-    struct LocalMemory(*mut core::ffi::c_void);
+    pub(crate) struct LocalMemory(*mut core::ffi::c_void);
 
     impl Drop for LocalMemory {
         fn drop(&mut self) {
@@ -830,10 +858,17 @@ mod imp {
 
     impl UserSid {
         fn current() -> io::Result<Self> {
+            // SAFETY: the pseudo-handle of this process needs no closing.
+            Self::of_process(unsafe { GetCurrentProcess() })
+        }
+
+        /// The user a process runs as; `process` must allow
+        /// PROCESS_QUERY_LIMITED_INFORMATION.
+        fn of_process(process: HANDLE) -> io::Result<Self> {
             let mut token: HANDLE = std::ptr::null_mut();
-            // SAFETY: the pseudo-handle of this process needs no closing;
+            // SAFETY: `process` is a process handle with query access;
             // `token` is a writable handle.
-            if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+            if unsafe { OpenProcessToken(process, TOKEN_QUERY, &mut token) } == 0 {
                 return Err(io::Error::last_os_error());
             }
             let token = Handle(token);
