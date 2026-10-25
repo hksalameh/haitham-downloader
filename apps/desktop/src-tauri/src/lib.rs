@@ -375,7 +375,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         schedule::countdown,
         schedule::cancel_after,
         complete::set_show_complete,
-        complete::complete_info
+        complete::complete_info,
+        complete::drag_out
     ]
 }
 
@@ -434,6 +435,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         schedule::cancel_after,
         complete::set_show_complete,
         complete::complete_info,
+        complete::drag_out,
         ui_test::ui_test_scenario,
         ui_test::ui_test_report
     ]
