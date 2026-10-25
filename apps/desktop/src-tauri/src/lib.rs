@@ -9,6 +9,7 @@
 #![forbid(unsafe_code)]
 
 mod closing;
+mod complete;
 mod live;
 mod menu;
 mod schedule;
@@ -175,7 +176,8 @@ pub fn run() {
             &data,
             args.iter().any(|a| a == "--close-quits"),
         ))
-        .manage(schedule::SharedAfter::default());
+        .manage(schedule::SharedAfter::default())
+        .manage(complete::Show::default());
     #[cfg(feature = "ui-test")]
     let builder = builder.manage(ui_test::UiTest::from_args(&args));
     builder
@@ -236,9 +238,10 @@ pub fn run() {
             closing::watch(tauri_app.handle());
             tauri_app.add_capability(windows::PROGRESS_CAPABILITY)?;
             windows::close_with_main(tauri_app.handle());
-            // The schedule window's, the same way (`schedule.rs`).
+            // The schedule window's and the «download complete» windows'
+            // (`schedule.rs`, `complete.rs`); they close with the main one too.
             tauri_app.add_capability(schedule::CAPABILITY)?;
-            schedule::close_with_main(tauri_app.handle());
+            tauri_app.add_capability(complete::CAPABILITY)?;
             #[cfg(feature = "ui-test")]
             if tauri_app.state::<ui_test::UiTest>().scenario.is_some() {
                 // Fixed demo data: nothing runs, so nothing to wait for.
@@ -369,7 +372,9 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         schedule::start_queue,
         schedule::set_after,
         schedule::countdown,
-        schedule::cancel_after
+        schedule::cancel_after,
+        complete::set_show_complete,
+        complete::complete_info
     ]
 }
 
@@ -425,6 +430,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         schedule::set_after,
         schedule::countdown,
         schedule::cancel_after,
+        complete::set_show_complete,
+        complete::complete_info,
         ui_test::ui_test_scenario,
         ui_test::ui_test_report
     ]
@@ -637,6 +644,7 @@ async fn run_queues(handle: tauri::AppHandle) {
                 };
                 on_queue_event(&event, &live, &links, &asks, &from_browser, &store, changed);
                 schedule::on_event(&handle, &event);
+                complete::on_event(&handle, &event);
                 notify(&handle, &live);
             })
             .await;
