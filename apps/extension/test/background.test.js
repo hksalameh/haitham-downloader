@@ -4,11 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * be fired, and what it does is recorded. `granted`: the cookie
  * permission; `buttons`: whether notifications take buttons (Firefox:
  * not); `answer`: what Zajil answers. */
-function fakeChrome({ granted, buttons = true, answer, jar = () => [{ name: "sid", value: "abc" }] }) {
+function fakeChrome({ granted, buttons = true, answer, jar = () => [{ name: "sid", value: "abc" }], windows = [] }) {
   const listeners = {};
   const on = (name) => ({ addListener: (fn) => (listeners[name] = fn) });
   const session = {};
-  const done = { tabs: [], notifications: [], downloads: [], sent: [], cleared: [], cookieReads: [], ports: [] };
+  const done = { tabs: [], notifications: [], downloads: [], sent: [], cleared: [], cookieReads: [], ports: [], downloadOptions: [] };
   const local = {};
   const chrome = {
     i18n: { getMessage: (key) => key },
@@ -53,11 +53,15 @@ function fakeChrome({ granted, buttons = true, answer, jar = () => [{ name: "sid
       },
     },
     tabs: { create: async (tab) => done.tabs.push(tab.url) },
+    windows: { onRemoved: on("windowRemoved"), getAll: async () => windows },
     action: { setBadgeText: async () => {}, onClicked: on("action") },
     contextMenus: { create: () => {}, onClicked: on("menu") },
     downloads: {
       onDeterminingFilename: on("filename"),
-      download: async (options) => done.downloads.push(options.url),
+      download: async (options) => {
+        done.downloads.push(options.url);
+        done.downloadOptions.push(options);
+      },
       pause: async () => {},
       resume: async () => {},
       cancel: async () => {},
@@ -208,6 +212,57 @@ describe("the background", () => {
     expect(fake.done.sent[1].instance).toBe(fake.done.sent[0].instance);
     // Only the download link's cookies are read, not the page's.
     expect(fake.done.cookieReads.map((q) => q.url)).toEqual(["https://example.com/a.zip", "https://example.com/b.zip"]);
+  });
+
+  it("from a private window, a sign-in site offers no button, and nothing is kept for one (review #84)", async () => {
+    const fake = fakeChrome({ granted: false, answer: forbidden });
+    await load(fake);
+    fake.listeners.menu({ menuItemId: "zajil-download-link", linkUrl: "https://example.com/a.zip" }, { incognito: true });
+    await flush();
+    expect(fake.done.sent[0].private).toBe(true);
+    expect(fake.done.sent[0].instance).toBeUndefined();
+    expect(fake.done.notifications.at(-1).buttons).toBeUndefined();
+    expect(fake.session).toEqual({});
+    fake.listeners.clicked("n1");
+    await flush();
+    expect(fake.done.downloads).toEqual([]);
+    expect(fake.done.tabs).toEqual([]);
+  });
+
+  it("tells Zajil when the last private window closes, once, and only after a private download (review of #91)", async () => {
+    const windows = [{ incognito: true }, { incognito: false }];
+    const fake = fakeChrome({ granted: false, answer: { ok: true }, windows });
+    await load(fake);
+    // No private download yet: nothing is sent when a window closes.
+    fake.listeners.windowRemoved(1);
+    await flush();
+    expect(fake.done.sent).toEqual([]);
+    fake.listeners.menu({ menuItemId: "zajil-download-link", linkUrl: "https://example.com/a.zip" }, { incognito: true });
+    await flush();
+    expect(fake.session).toEqual({ privateSent: true });
+    // A private window is still open: not yet.
+    fake.listeners.windowRemoved(2);
+    await flush();
+    expect(fake.done.sent).toHaveLength(1);
+    windows.splice(0, 1);
+    fake.listeners.windowRemoved(3);
+    await flush();
+    expect(fake.done.sent.at(-1)).toEqual({ type: "private_closed", protocol_version: 1 });
+    expect(fake.session).toEqual({});
+    fake.listeners.windowRemoved(4);
+    await flush();
+    expect(fake.done.sent).toHaveLength(2);
+  });
+
+  it("downloads with the browser in the tab's own container (review #84)", async () => {
+    const fake = fakeChrome({ granted: true, answer: forbidden, jar: () => [] });
+    await load(fake);
+    fake.listeners.menu({ menuItemId: "zajil-download-link", linkUrl: "https://example.com/a.zip" }, { cookieStoreId: "firefox-container-3" });
+    await flush();
+    expect(fake.done.sent[0].private).toBeUndefined();
+    fake.listeners.button("n1", 0);
+    await flush();
+    expect(fake.done.downloadOptions.at(-1)).toEqual({ url: "https://example.com/a.zip", cookieStoreId: "firefox-container-3" });
   });
 
   it("from a private window, the menu sends no cookies and reads none", async () => {
