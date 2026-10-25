@@ -222,6 +222,42 @@ pub struct SettingsChange {
     pub speed_limit: Option<u64>,
 }
 
+/// The browser integration (M5): `zajil-host` registered with each
+/// browser, or why not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct IntegrationView {
+    /// Why nothing was registered; `null`: registered (see `browsers`).
+    pub host_problem: Option<HostProblemView>,
+    pub browsers: Vec<BrowserIntegrationView>,
+}
+
+/// Why `zajil-host` next to the program was not registered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum HostProblemView {
+    /// Not there, or not a program (a development build).
+    Missing,
+    /// The program runs from a place that goes away when it closes (an
+    /// AppImage's mount, macOS's App Translocation): a browser would later
+    /// start whatever another user put at that path.
+    Temporary,
+    /// Another user could change it: its folder or itself is writable by
+    /// others, or owned by someone else.
+    Unsafe,
+}
+
+/// One browser's registration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct BrowserIntegrationView {
+    /// `chrome`, `chromium`, `edge` or `firefox`.
+    pub browser: String,
+    /// Why it failed; `null`: registered.
+    pub error: Option<String>,
+}
+
 /// What an import did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]

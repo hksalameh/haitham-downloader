@@ -6,6 +6,8 @@
   import type { SettingsChange } from "../bindings/SettingsChange";
   import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { onMount } from "svelte";
+  import { api } from "../api";
+  import type { IntegrationView } from "../bindings/IntegrationView";
 
   let {
     settings,
@@ -59,6 +61,33 @@
     const n = Math.round(Number(input.value));
     if (Number.isFinite(n) && n >= 1 && n <= settings.max_connections) change({ connections: n });
     else input.value = String(settings.connections);
+  }
+
+  // The browser integration (M5): how the last registration went, the one
+  // at the start until the button is pressed. The button stays focusable
+  // while it works (aria-disabled), and one live region says the result.
+  const BROWSERS: Record<string, string> = { chrome: "Chrome", chromium: "Chromium", edge: "Microsoft Edge", firefox: "Firefox" };
+  const HOST_PROBLEMS = { missing: "settings-browser-missing", temporary: "settings-browser-temporary", unsafe: "settings-browser-unsafe" } as const;
+  let integration = $state<IntegrationView | null>(null);
+  let integrationProblem = $state<string | null>(null);
+  let fixing = $state(false);
+  onMount(() => {
+    api.browserIntegration().then(
+      (last) => (integration ??= last),
+      () => {},
+    );
+  });
+  async function fixIntegration() {
+    if (fixing) return;
+    fixing = true;
+    try {
+      integration = await api.fixBrowserIntegration();
+      integrationProblem = null;
+    } catch (e) {
+      integrationProblem = String(e);
+    } finally {
+      fixing = false;
+    }
   }
 
   // Launching at login is the system's own setting (a login item, a
@@ -207,6 +236,33 @@
   </fieldset>
 
   <fieldset>
+    <legend>{locale.t("settings-browser")}</legend>
+    <p class="hint">{locale.t("settings-browser-hint")}</p>
+    <div class="row">
+      <button class="btn" aria-disabled={fixing} onclick={() => void fixIntegration()}>{locale.t("settings-browser-fix")}</button>
+    </div>
+    <div role="status" aria-live="polite" aria-busy={fixing}>
+      {#if fixing}
+        <p class="hint">{locale.t("settings-browser-working")}</p>
+      {:else if integrationProblem}
+        <p class="problem">{integrationProblem}</p>
+      {:else if integration?.host_problem}
+        <p class="problem">{locale.t(HOST_PROBLEMS[integration.host_problem])}</p>
+      {:else if integration}
+        <ul class="browsers">
+          {#each integration.browsers as b (b.browser)}
+            <li class={b.error ? "problem" : "done"}>
+              {b.error
+                ? locale.t("settings-browser-failed", { browser: BROWSERS[b.browser] ?? b.browser, error: b.error })
+                : locale.t("settings-browser-ok", { browser: BROWSERS[b.browser] ?? b.browser })}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
+  </fieldset>
+
+  <fieldset>
     <legend>{locale.t("settings-autostart")}</legend>
     <label class="choice">
       <input type="checkbox" checked={autostart === true} disabled={autostart === null} onchange={(e) => void setAutostart(e.currentTarget.checked)} />
@@ -327,6 +383,11 @@
     gap: 6px;
     align-items: flex-start;
     color: var(--amber);
+  }
+  .browsers {
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
   }
   .problem,
   .done {
