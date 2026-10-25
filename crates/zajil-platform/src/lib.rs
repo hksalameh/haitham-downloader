@@ -6,16 +6,20 @@
 //!
 //! Phase M1 provides [`AppPaths`], the fixed identifiers from ADR-0001 and
 //! the [`fs`] helpers for the safe-write rules of ADR-0004. Phase M3 adds
-//! [`power`] (`PowerControl`).
+//! [`power`] (`PowerControl`); M5 [`clipboard`], [`ipc`] and
+//! [`native_host`].
 //!
 //! `unsafe` is denied everywhere except the small, commented system calls in
-//! [`fs`], [`console`] and, on Windows, [`power`] that the standard library
-//! does not offer (no-replace and write-through renames, hard-link counts,
-//! space reservation, sparse files, free space, files only their owner may
-//! read, the console mode, and shutting down or sleeping on Windows).
+//! [`fs`], [`console`] and, on Windows, [`power`], [`session`], [`ipc`],
+//! [`native_host`] and [`clipboard`] that the standard library does not
+//! offer (no-replace and write-through renames, hard-link counts, space
+//! reservation, sparse files, free space, files only their owner may read,
+//! the console mode, shutting down or sleeping, the end of the session,
+//! named pipes, the registry and the clipboard on Windows).
 
 #![deny(unsafe_code)]
 
+pub mod clipboard;
 pub mod console;
 pub mod fs;
 pub mod ids;

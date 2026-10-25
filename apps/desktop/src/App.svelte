@@ -332,6 +332,7 @@
   onMount(() => {
     locale.set("ar");
     let unlisten: (() => void) | undefined;
+    let unlistenClipboard: (() => void) | undefined;
     void (async () => {
       if (await runUiTest()) return;
       try {
@@ -341,9 +342,21 @@
       }
       // Listening first, so a change during the first snapshot is not lost.
       unlisten = await api.onChange(() => void refresh());
+      // A copied download link waits in the paste bar, and the window
+      // shows; nothing asks the server before the user presses "Download"
+      // (review of #67). Ignored while the add dialog is open.
+      unlistenClipboard = await api.onClipboardLink((url) => {
+        if (adding) return;
+        pasted = url;
+        void api.showWindow().catch(() => {});
+        void tick().then(() => document.getElementById("paste-url")?.focus());
+      });
       await refresh();
     })();
-    return () => unlisten?.();
+    return () => {
+      unlisten?.();
+      unlistenClipboard?.();
+    };
   });
 </script>
 

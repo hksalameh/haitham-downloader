@@ -101,15 +101,16 @@ jobs:
           echo "ZAJIL_TEST_EXFAT=/mnt/zexfat" >> "$GITHUB_ENV"
       # The CLI tests run printed commands in sh, bash and zsh, and fail on
       # CI if one is missing instead of skipping it (owner's decision on
-      # #28). Ubuntu runners have no zsh.
-      - name: Install zsh (Linux)
+      # #28). Ubuntu runners have no zsh. Xvfb is the display for the real
+      # clipboard test below.
+      - name: Install zsh and Xvfb (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 10
         env:
           APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
         run: |
           set -euo pipefail
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends zsh
+          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends zsh xvfb xauth
           zsh -c 'echo "zsh $ZSH_VERSION"'
       - name: Mount FAT32 and exFAT test volumes (macOS)
         if: runner.os == 'macOS'
@@ -161,6 +162,31 @@ jobs:
         run: cargo build --workspace --all-targets --locked
       - name: Test
         run: cargo test --workspace --locked
+      # Clipboard monitoring (M5) reads the real clipboard: the test that
+      # puts text there and reads it back is ignored by default, because it
+      # replaces the clipboard of whoever runs it. Linux needs a display.
+      # deny.toml leaves arboard's Windows backend (BSL-1.0) out of the
+      # license check because no Zajil build contains it; this proves it.
+      - name: arboard's Windows backend is in no build
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-pc-windows-msvc x86_64-apple-darwin aarch64-apple-darwin; do
+            for manifest in Cargo.toml apps/desktop/src-tauri/Cargo.toml; do
+              for crate in clipboard-win error-code; do
+                found=$(cargo tree --locked --manifest-path "$manifest" --target "$target" -e all -i "$crate" 2>/dev/null || true)
+                if [ -n "$found" ]; then echo "$crate is built for $target ($manifest):"; echo "$found"; exit 1; fi
+              done
+            done
+          done
+          echo "clipboard-win and error-code: in no build"
+      - name: The real clipboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test=(cargo test --locked -p zajil-platform --lib -- --ignored --exact clipboard::tests::text_put_on_the_clipboard_is_read_back)
+          if [ "$RUNNER_OS" = Linux ]; then xvfb-run -a "${test[@]}"; else "${test[@]}"; fi
       # Release builds have no overflow checks, so arithmetic on untrusted
       # input (HTTP dates, ranges, state files) is tested there too.
       - name: Test engine in release mode
