@@ -9,6 +9,8 @@
   import DownloadTable from "./lib/components/DownloadTable.svelte";
   import AddDialog from "./lib/components/AddDialog.svelte";
   import Details from "./lib/components/Details.svelte";
+  import RefreshDialog from "./lib/components/RefreshDialog.svelte";
+  import { asRefreshProblem, refreshText } from "./lib/refresh";
   import Icon from "./lib/components/Icon.svelte";
   import { api } from "./lib/api";
   import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
@@ -28,6 +30,9 @@
   let details = $state<DetailsView | null>(null);
   let pasted = $state("");
   let adding = $state<{ url: string; probe: ProbeView | null; error: string | null; busy: boolean } | null>(null);
+  // The "refresh the download link" dialog (M5): its download, and why the
+  // last try was refused.
+  let refreshing = $state<{ id: number; name: string; problem: string | null; detail: string | null; busy: boolean } | null>(null);
   let error = $state<string | null>(null);
   // What the last toolbar command answered, if it failed.
   let failed = $state<string | null>(null);
@@ -241,6 +246,41 @@
     }
   }
 
+  function startRefreshing() {
+    const d = details?.download;
+    if (d && !refreshing) refreshing = { id: d.id, name: d.name, problem: null, detail: null, busy: false };
+  }
+
+  // Closed: a refresh still asking the server is given up, and the focus
+  // goes back to the details' buttons (review of #78).
+  function closeRefreshing() {
+    if (refreshing?.busy) void api.cancelRefresh(refreshing.id).catch(() => {});
+    refreshing = null;
+    void tick().then(() => {
+      const back = ["details-refresh", "details-resume", "details-pause", "details-back"].map((id) => document.getElementById(id)).find((b) => b);
+      back?.focus();
+    });
+  }
+
+  async function refreshLink(url: string) {
+    if (!refreshing || refreshing.busy) return;
+    const id = refreshing.id;
+    refreshing = { ...refreshing, busy: true };
+    try {
+      await api.refreshLink(id, url);
+      if (refreshing?.id === id) {
+        refreshing = { ...refreshing, busy: false };
+        await refresh();
+        closeRefreshing();
+        return;
+      }
+    } catch (e) {
+      const said = refreshText(locale.t, locale.lang, locale.digits, asRefreshProblem(e));
+      if (refreshing?.id === id) refreshing = { ...refreshing, busy: false, problem: said.text, detail: said.detail };
+    }
+    await refresh();
+  }
+
   // A command that fails is said, and the list is asked for again either
   // way, so it shows what really happened (review of #46).
   // `id`: the details' own download, whatever the list selects (review of
@@ -280,6 +320,13 @@
     }
     if (screen === "categories") view = "categories";
     if (screen === "details") details = await api.details(1);
+    // The failed download, its new link refused as another file's (M5).
+    if (screen === "refresh") {
+      details = await api.details(6);
+      const problem = { kind: "not_the_same_file", why: "size", theirs: 15 * 1024 ** 2, ours: 14 * 1024 ** 2 } as const;
+      const said = refreshText(locale.t, locale.lang, locale.digits, problem);
+      refreshing = { id: 6, name: details.download.name, problem: said.text, detail: null, busy: false };
+    }
     if (screen === "add")
       adding = {
         url: "https://releases.ubuntu.com/24.04.3/ubuntu-24.04.3-desktop-amd64.iso",
@@ -344,9 +391,10 @@
       unlisten = await api.onChange(() => void refresh());
       // A copied download link waits in the paste bar, and the window
       // shows; nothing asks the server before the user presses "Download"
-      // (review of #67). Ignored while the add dialog is open.
+      // (review of #67). Ignored while a dialog is open: with the refresh
+      // dialog, the new link is copied for it (review of #78).
       unlistenClipboard = await api.onClipboardLink((url) => {
-        if (adding) return;
+        if (adding || refreshing) return;
         pasted = url;
         void api.showWindow().catch(() => {});
         void tick().then(() => document.getElementById("paste-url")?.focus());
@@ -396,6 +444,7 @@
           onback={() => (details = null)}
           onpause={() => void act("pause", details?.download.id ?? null)}
           onresume={() => void act("resume", details?.download.id ?? null)}
+          onrefresh={startRefreshing}
         />
       {:else}
         <PasteBar bind:value={pasted} onsubmit={(url) => void startAdding(url)} />
@@ -425,6 +474,16 @@
           categories={snapshot.categories}
           onadd={(r) => void add(r)}
           oncancel={closeAdding}
+        />
+      {/if}
+      {#if refreshing}
+        <RefreshDialog
+          name={refreshing.name}
+          problem={refreshing.problem}
+          detail={refreshing.detail}
+          busy={refreshing.busy}
+          onrefresh={(url) => void refreshLink(url)}
+          oncancel={closeRefreshing}
         />
       {/if}
     </main>
