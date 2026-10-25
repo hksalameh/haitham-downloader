@@ -8,6 +8,7 @@ import { api, onNewDownload, pausesSafely } from "./compat.js";
 import { menuMessage, needsSignIn, send, shouldCapture, takeOver } from "./capture.js";
 import { cookieHeader, cookiesAllowed } from "./cookies.js";
 import { load } from "./settings.js";
+import { instanceId, newTicket, plainStore, rememberTicket, startLink } from "./link.js";
 
 const MENU = "zajil-download-link";
 
@@ -117,10 +118,13 @@ onNewDownload(api, (item) => {
     const settings = await load(api);
     if (!shouldCapture(item, settings, api.runtime.id)) return;
     const pause = pausesSafely(api);
-    const cookies = await cookieHeader(api, item.finalUrl || item.url, item.cookieStoreId);
-    await report(await takeOver(api, item, { pause, cookies }), pause ? "paused" : "running", {
-      sentCookies: Boolean(cookies),
-    });
+    const url = item.finalUrl || item.url;
+    const cookies = await cookieHeader(api, url, item.cookieStoreId);
+    const ticket = newTicket();
+    const result = await takeOver(api, item, { pause, cookies, instance: await instanceId(api), ticket });
+    // While it is open, Zajil may ask for its cookies again after a restart.
+    if (cookies && result?.outcome === "taken") await rememberTicket(api, ticket, url, plainStore(item.cookieStoreId));
+    await report(result, pause ? "paused" : "running", { sentCookies: Boolean(cookies) });
   })();
 });
 
@@ -149,11 +153,25 @@ api.contextMenus.onClicked.addListener((/** @type {any} */ info, /** @type {any}
     }
     // A private window's cookies are never sent: the link goes without.
     const cookies = tab?.incognito ? null : await cookieHeader(api, info.linkUrl, tab?.cookieStoreId);
-    const message = /** @type {Record<string, unknown>} */ (menuMessage(info, cookies));
-    await report(await send(api, message), "menu", { url: info.linkUrl, sentCookies: Boolean(cookies) });
+    const from = {
+      instance: await instanceId(api),
+      store: tab?.incognito ? undefined : plainStore(tab?.cookieStoreId),
+      ticket: newTicket(),
+    };
+    const message = /** @type {Record<string, unknown>} */ (menuMessage(info, cookies, from));
+    const result = await send(api, message);
+    if (cookies && result.outcome === "taken") await rememberTicket(api, from.ticket, info.linkUrl, from.store);
+    await report(result, "menu", { url: info.linkUrl, sentCookies: Boolean(cookies) });
   })();
 });
 
 api.action.onClicked.addListener(() => {
   void api.runtime.openOptionsPage();
 });
+
+// The link to Zajil, open while the browser is (M5): each time the
+// background starts, it opens it again. A background starts lazily, only
+// for an event it listens to: this one starts it with the browser (review
+// of #80: the link never opened at startup).
+api.runtime.onStartup.addListener(() => {});
+startLink(api);
