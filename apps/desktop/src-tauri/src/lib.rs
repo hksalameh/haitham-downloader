@@ -183,13 +183,22 @@ pub fn run() {
     // again shows it instead of starting a second program on the same
     // queues (review of #109). Not with `--data-dir` (the tests and the
     // screenshots, each on a folder of its own).
+    let one_zajil = !args.iter().any(|a| a == "--data-dir");
+    // On macOS through Zajil's own channel in its data folder: the plugin
+    // there listens at a fixed path in `/tmp`, where another user of the
+    // Mac could answer first and keep Zajil from ever opening (#60).
+    #[cfg(target_os = "macos")]
+    if one_zajil && show_running(&data) {
+        return;
+    }
     let builder = tauri::Builder::default();
-    let builder = if args.iter().any(|a| a == "--data-dir") {
-        builder
-    } else {
+    #[cfg(not(target_os = "macos"))]
+    let builder = if one_zajil {
         builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             tray::show_window(app);
         }))
+    } else {
+        builder
     };
     let builder = builder
         .plugin(tauri_plugin_dialog::init())
@@ -1024,6 +1033,11 @@ fn serve_extension<R: tauri::Runtime>(handle: tauri::AppHandle<R>, data: PathBuf
                     video::receive(&handle, page.clone(), cookies.clone());
                     return zajil_host::Response::ok();
                 }
+                // Zajil started again on this data folder (macOS, #60).
+                if let zajil_host::Request::ShowWindow { .. } = &request {
+                    tray::show_window(&handle);
+                    return zajil_host::Response::ok();
+                }
                 // A Drive file's download address's cookies, asked of the
                 // browser the download came from, on its link (the
                 // extension has its ticket already).
@@ -1399,6 +1413,33 @@ fn host_beside(exe: &Path, appimage: bool, fixed: &Path) -> Result<PathBuf, view
         return Err(Problem::Unsafe);
     }
     Ok(host)
+}
+
+/// Whether a Zajil already runs on the data folder `data`: then it is
+/// asked, over its private channel, to show its window (#60). On macOS and
+/// Linux the channel is a socket in a folder of the data folder that only
+/// this user owns and can enter (checked at every connect); on Windows the
+/// client checks who serves the pipe. Nothing answering, or anything going
+/// wrong: this one starts.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn show_running(data: &Path) -> bool {
+    let Ok(mut stream) = zajil_platform::ipc::connect(data, Duration::from_millis(300)) else {
+        return false;
+    };
+    let ask = zajil_host::Request::ShowWindow {
+        protocol_version: zajil_host::PROTOCOL_VERSION,
+    };
+    if zajil_host::write_json(&mut stream, &ask).is_err() {
+        return false;
+    }
+    // A Zajil that answered is there, whatever it said; one that does not
+    // answer in time is there too (it holds the channel).
+    let (done, wait) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = done.send(zajil_host::read_frame(&mut stream, 4096).is_ok());
+    });
+    let _ = wait.recv_timeout(Duration::from_secs(2));
+    true
 }
 
 /// Which window a macOS menu command goes to, with `front` the window in
@@ -1783,6 +1824,8 @@ fn from_extension_with(
 ) -> zajil_host::Response {
     match request {
         zajil_host::Request::Ping { .. } => zajil_host::Response::ok(),
+        // Served before it reaches here (`serve_extension`).
+        zajil_host::Request::ShowWindow { .. } => zajil_host::Response::refused("not here"),
         // The link is served apart (`Links`); an answer comes only on it.
         zajil_host::Request::Link { .. } | zajil_host::Request::Cookies { .. } => {
             zajil_host::Response::refused("not here")
@@ -2982,6 +3025,44 @@ mod tests {
         assert_eq!(
             watcher.tick(true, link, &categories, at(3)).as_deref(),
             Some(a)
+        );
+    }
+
+    /// #60: Zajil started again on a data folder where it runs asks the
+    /// running one, over its channel, to show its window, and says so; on
+    /// a folder where nothing runs, it starts.
+    #[test]
+    fn a_second_start_asks_the_running_zajil_to_show_its_window() {
+        let data = tempfile::tempdir().unwrap();
+        assert!(!show_running(data.path()), "nothing runs there");
+        let listener = zajil_platform::ipc::Listener::bind(data.path()).unwrap();
+        let (seen, saw) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            zajil_host::serve(
+                listener,
+                move |request| {
+                    let _ = seen.send(request);
+                    zajil_host::Response::ok()
+                },
+                Default::default(),
+            );
+        });
+        // On Windows the pipe exists once the serving thread waits on it:
+        // asked a few times, not once (review of #243).
+        let mut shown = false;
+        for _ in 0..50 {
+            shown = show_running(data.path());
+            if shown {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(shown);
+        assert_eq!(
+            saw.recv_timeout(Duration::from_secs(5)).unwrap(),
+            zajil_host::Request::ShowWindow {
+                protocol_version: zajil_host::PROTOCOL_VERSION
+            }
         );
     }
 
