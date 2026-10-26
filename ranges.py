@@ -40,6 +40,8 @@ class AdaptiveRequestGate:
     MAX_RETRIES = 8
     BASE_DELAY = 1.5
     MAX_BACKOFF = 30.0
+    RAMP_BYTES = 4 * 1024 * 1024
+    SETTLE_SECONDS = 8.0
 
     def __init__(self, requested):
         self.ceiling = max(1, int(requested))
@@ -48,6 +50,8 @@ class AdaptiveRequestGate:
         self.cooldown_until = 0.0
         self.successes = 0
         self.last_http_status = None
+        self.bytes_since_ramp = 0
+        self.last_throttle_at = -float("inf")
         self.lock = threading.RLock()
 
     def acquire(self, cancel):
@@ -89,10 +93,33 @@ class AdaptiveRequestGate:
                 self.limit = max(1, self.limit // 2)
             self.successes = 0
             self.last_http_status = status
-            self.cooldown_until = max(self.cooldown_until, time.monotonic() + delay)
+            self.bytes_since_ramp = 0
+            self.last_throttle_at = time.monotonic()
+            self.cooldown_until = max(self.cooldown_until, self.last_throttle_at + delay)
+
+    def _can_ramp(self):
+        now = time.monotonic()
+        return (now >= self.cooldown_until and
+                now - self.last_throttle_at >= self.SETTLE_SECONDS)
+
+    def record_bytes(self, count):
+        """Grow concurrency from verified streamed bytes, not only full parts."""
+        with self.lock:
+            if self.limit >= self.ceiling:
+                return
+            if not self._can_ramp():
+                return
+            self.bytes_since_ramp += count
+            if self.bytes_since_ramp >= self.RAMP_BYTES:
+                self.limit += 1
+                self.bytes_since_ramp -= self.RAMP_BYTES
+                self.successes = 0
 
     def successful_range(self):
         with self.lock:
+            if not self._can_ramp():
+                self.successes = 0
+                return
             self.successes += 1
             if self.successes >= 3 and self.limit < self.ceiling:
                 self.limit += 1
@@ -157,9 +184,14 @@ class RangeManager:
         return Path(self.records[gid].get("parts_root",str(self.parts_dir)))/gid/(f"part-{index:02d}.bin")
 
     def _completed(self,record):
-        return [min(r["size"],self._part(record["gid"],r["index"]).stat().st_size
-                    if self._part(record["gid"],r["index"]).exists() else 0)
-                for r in record["ranges"]]
+        completed=[]
+        for part in record["ranges"]:
+            try:
+                size=self._part(record["gid"],part["index"]).stat().st_size
+            except FileNotFoundError:
+                size=0  # A part may disappear while a finished download is being merged.
+            completed.append(min(part["size"],size))
+        return completed
 
     def resume(self,gid):
         with self.lock:
@@ -209,6 +241,7 @@ class RangeManager:
                             written+=len(block)
                             with self.lock:
                                 samples[r["index"]]=(time.monotonic(),written)
+                            gate.record_bytes(len(block))
                 retries=0
                 if written>=size:
                     gate.successful_range()
@@ -257,11 +290,13 @@ class RangeManager:
                 os.replace(merge,target)
             finally:
                 if merge.exists():merge.unlink()
-            shutil.rmtree(Path(rec.get("parts_root",str(self.parts_dir)))/gid,ignore_errors=True)
+            # Publish completion before deleting the temporary part files.
+            # UI polling must never see an active record whose parts vanished.
             with self.lock:
                 if gid in self.records:
                     rec["status"]="complete"
                     self._save()
+            shutil.rmtree(Path(rec.get("parts_root",str(self.parts_dir)))/gid,ignore_errors=True)
         except Exception as ex:
             with self.lock:
                 if gid in self.records:

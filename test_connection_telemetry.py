@@ -2,6 +2,7 @@
 from __future__ import annotations
 import tempfile
 import threading
+import time
 from pathlib import Path
 from ranges import AdaptiveRequestGate, RangeManager
 
@@ -54,4 +55,29 @@ with tempfile.TemporaryDirectory(prefix="hdm_telemetry_") as folder:
     assert state["last_http_status"] is None
     assert state["connection_count"]==12
     print("PASS_NO_STALE_ACTIVITY_AFTER_PAUSE")
+
+    # Fast streaming should raise the real request limit before whole parts finish.
+    ramp=AdaptiveRequestGate(12)
+    assert ramp.limit==4
+    for _ in range(64):
+        ramp.record_bytes(65536)
+    assert ramp.limit==5, ramp.limit
+    for _ in range(64):
+        ramp.record_bytes(65536)
+    assert ramp.limit==6, ramp.limit
+    print("PASS_BYTES_DRIVEN_EARLY_CONNECTION_RAMP")
+
+    # A 429 must reduce concurrency and prevent instant aggressive re-ramping.
+    ramp.throttle(1,429,"0.1")
+    assert ramp.limit==1
+    for _ in range(256):
+        ramp.record_bytes(65536)
+    assert ramp.limit==1, ramp.limit
+    with ramp.lock:
+        ramp.last_throttle_at-=ramp.SETTLE_SECONDS+1
+        ramp.cooldown_until=time.monotonic()-1
+    for _ in range(64):
+        ramp.record_bytes(65536)
+    assert ramp.limit==2, ramp.limit
+    print("PASS_RATE_LIMIT_PREVENTS_IMMEDIATE_RE_RAMP")
 print("PASS_ALL_CONNECTION_TELEMETRY")
