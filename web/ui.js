@@ -51,14 +51,19 @@ function drawTable(){
  $("rows").innerHTML=rows.map(d=>{
    const pct=percent(d),id=esc(d.gid);
    const cls="state-"+(d.status||"waiting");
-   const connection=d.connection_count?d.connection_count+(d.detail_type==="connections"?" ✓":""):"—";
+   const isSegmented=d.detail_type==="connections";
+   const activeCount=Number(d.active_requests??0);
+   const connection=isSegmented?(d.status==="active"?activeCount+"/"+d.connection_count:d.connection_count+tr(" جزء"," parts")):(d.connection_count||"—");
+   const connectionHint=isSegmented?(d.status==="active"?tr("طلبات HTTP الجارية: ","Active HTTP requests: ")+activeCount+tr("، الحد الحالي: ","; current limit: ")+Number(d.connection_limit??0)+tr("، الأجزاء الكلية: ","; total segments: ")+d.connection_count:tr("عدد الأجزاء، وليس الاتصالات الجارية","Segment count, not active connections")):"";
    const state=d.status==="waiting"?"queued":d.status;
+   const waitingForHost=d.status==="active"&&Number(d.retry_wait_seconds||0)>0;
+   const displayState=waitingForHost?tr("انتظار الخادم ","Waiting for server ")+d.retry_wait_seconds+tr("ث","s"):label(state);
    return `<tr data-gid="${id}" class="${UI.selection.has(d.gid)?"selected":""}" title="${esc(d.url||d.filepath||"")}"><td><input type="checkbox" data-check="${id}" ${UI.selection.has(d.gid)?"checked":""}></td>
      <td><span class="filetitle"><span class="file-icon">${iconFor(d.category)}</span><span class="file-name">${esc(d.name)}</span></span></td>
-     <td dir="ltr">${size(d.total||d.completed)}</td><td class="${cls}">${label(state)}</td>
+     <td dir="ltr">${size(d.total||d.completed)}</td><td class="${cls}">${esc(displayState)}</td>
      <td><div class="percent-track"><div class="percent-fill" style="width:${pct}%"></div><span class="percent-txt">${pct}%</span></div></td>
      <td dir="ltr">${d.status==="active"?size(d.speed)+"/s":"—"}</td><td dir="ltr">${eta(d)}</td>
-     <td dir="ltr">${connection}</td><td dir="ltr">${esc(d.date||"")}</td></tr>`;
+     <td dir="ltr" title="${esc(connectionHint)}">${esc(connection)}</td><td dir="ltr">${esc(d.date||"")}</td></tr>`;
  }).join("");
  $("empty").hidden=rows.length>0;
  $("counter").textContent=rows.length;
@@ -175,7 +180,7 @@ async function refreshDetails(){
  if(gid!==UI.detailsId)return;
  UI.detailsSnapshot=d;
  $("details-name").textContent=d.name||gid;$("details-title").textContent=(d.name||gid)+" — تقدم التحميل";
- $("details-status").textContent=label(d.status);
+ $("details-status").textContent=d.status==="active"&&Number(d.retry_wait_seconds||0)>0?tr("انتظار الخادم ","Waiting for server ")+d.retry_wait_seconds+tr("ث","s"):label(d.status);
  $("details-size").textContent=size(d.total);
  $("details-downloaded").textContent=size(d.completed)+" / "+size(d.total);
  $("details-speed").textContent=size(d.speed)+"/s";$("details-eta").textContent=eta(d);
@@ -183,9 +188,9 @@ async function refreshDetails(){
  $("details-progress-fill").style.width=percent(d)+"%";
  $("details-url").textContent=d.url||d.filepath||"";
  const connection=Array.isArray(d.ranges);
- $("details-connections-count").textContent=connection?tr("اتصالات HTTP فعلية: ","Real HTTP connections: ")+d.ranges.length:tr("اتصالات aria2: ","aria2 connections: ")+(d.connections??"—");
+ $("details-connections-count").textContent=connection?(d.status==="active"?tr("طلبات HTTP الجارية: ","Active HTTP requests: ")+Number(d.active_requests??0)+tr("، الحد الحالي: ","; current limit: ")+Number(d.connection_limit??0)+tr("، الأجزاء: ","; total segments: ")+d.ranges.length:tr("أجزاء الملف: ","File segments: ")+d.ranges.length):tr("اتصالات aria2: ","aria2 connections: ")+(d.connections??"—");
  if(connection){
-   $("segments-explanation").textContent=tr("الأرقام تمثل البايتات المستلمة فعليًا عبر كل اتصال بنطاق HTTP Range مستقل.","Actual downloaded bytes for each independent HTTP Range connection.");
+   $("segments-explanation").textContent=tr("كل سطر يمثل جزءًا من الملف، وليس اتصالًا نشطًا بالضرورة. الأرقام تعرض البايتات المستلمة لكل جزء.","Each row is a file segment, not necessarily a live connection. Byte counts are per segment.");
    $("file-map").innerHTML=fileMapConnections(d.ranges);
    $("connections-list").innerHTML=rowsConnections(d.ranges);
  }else {
