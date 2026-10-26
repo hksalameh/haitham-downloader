@@ -1,0 +1,36 @@
+name: Downloader reliability tests
+
+on:
+  push:
+    branches: [main, "fix/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python syntax validation
+        run: python -m compileall -q app.py engine.py ranges.py desktop_shell.py
+      - name: Adaptive HTTP retry and security regression
+        run: python -u test_adaptive_retry.py
+      - name: Multipart pause resume and integrity
+        run: python -u test_range_connections.py
+      - name: Missing completed file state
+        run: python -u test_missing_file.py
+      - name: Check Chrome interception script
+        run: node --check browser-extension/background.js
+      - name: Check UI script
+        run: node --check web/ui.js
+      - name: Chrome single-dialog regression
+        run: node test_chrome_single_dialog.cjs

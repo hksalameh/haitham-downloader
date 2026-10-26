@@ -2,8 +2,9 @@
 const assert=require("node:assert/strict");
 const vm=require("node:vm");
 const fs=require("node:fs");
-const background=fs.readFileSync("../browser-extension/background.js","utf8");
-const content=fs.readFileSync("../browser-extension/content.js","utf8");
+const path=require("node:path");
+const background=fs.readFileSync(path.join(__dirname,"browser-extension","background.js"),"utf8");
+const content=fs.readFileSync(path.join(__dirname,"browser-extension","content.js"),"utf8");
 let createdListeners=0, sent=[], fallback=0;
 const callbacks={};
 const chrome={
