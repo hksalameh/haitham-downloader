@@ -26,6 +26,25 @@ const OPENING = /[(\[{"'«]/;
 const STUCK = /[0-9_.\-]/;
 const JOINER = /[_.\-]/;
 
+/// The direction a name box gives the name, by its first strong letter
+/// (as `dir="auto"`, which looks through no isolate): what is drawn over
+/// the box lines up with it.
+export function nameDir(name: string): "rtl" | "ltr" {
+  for (const c of name) {
+    if (RTL.test(c)) return "rtl";
+    if (LATIN.test(c)) return "ltr";
+  }
+  return "ltr";
+}
+
+/// A name for a text the page does not draw (a window's title, which the
+/// system draws): FileName's two isolates as Unicode isolate marks, so the
+/// system orders it as FileName does (M5.5).
+export function isolatedName(name: string): string {
+  const { head, tail } = nameParts(name);
+  return `\u2068${head}${tail ? `\u2066${tail}\u2069` : ""}\u2069`;
+}
+
 export function nameParts(name: string): NameParts {
   const match = /^(.*?)((?:\.tar)?\.[A-Za-z0-9]{1,8})$/.exec(name);
   if (!match) return { head: name, tail: "" };

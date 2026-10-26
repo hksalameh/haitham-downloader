@@ -124,6 +124,13 @@ fn data_dir(args: &[String]) -> Result<PathBuf, String> {
 }
 
 pub fn run() {
+    // Said at once, as each stage of the start below (#220: a start whose
+    // window never came said nothing at all).
+    eprintln!(
+        "zajil: starting (version {}, process {})",
+        env!("CARGO_PKG_VERSION"),
+        std::process::id()
+    );
     let args: Vec<String> = std::env::args().collect();
     let data = data_dir(&args).unwrap_or_else(|e| panic!("no data folder: {e}"));
     let system_download_dir = SystemPaths::new()
@@ -230,6 +237,12 @@ pub fn run() {
         .invoke_handler(handlers())
         .setup(move |tauri_app| {
             let handle = tauri_app.handle().clone();
+            if let Some(window) = tauri_app.get_webview_window("main") {
+                eprintln!(
+                    "zajil: the window is made (shown: {}); its page is loading",
+                    window.is_visible().unwrap_or(false)
+                );
+            }
             #[cfg(unix)]
             if let Some(signals) = signals {
                 tauri::async_runtime::spawn(exit_on_signal(handle.clone(), signals));
@@ -296,6 +309,10 @@ pub fn run() {
                         Some("link") => Some(windows::LINK_SIZE),
                         Some("progress") => Some(windows::PROGRESS_SIZE),
                         Some("tools" | "quality") => Some(video::SIZE),
+                        Some("complete") => Some(complete::SIZE),
+                        Some("schedule") => Some(schedule::SIZE),
+                        Some("batch") => Some(batch::SIZE),
+                        Some("grab") => Some(grab::SIZE),
                         _ => None,
                     };
                     // macOS: the system's title bar is drawn by the page in
@@ -550,6 +567,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         complete::drag_out,
         ui_test::ui_test_scenario,
         ui_test::ui_test_report,
+        ui_test::ui_test_e2e,
+        ui_test::ui_test_step,
         ui_test::ui_test_windows,
         ui_test::ui_test_loaded
     ]
@@ -2253,6 +2272,17 @@ async fn open_download<R: tauri::Runtime>(
         let item = queues.item(id).ok_or_else(|| format!("no download {id}"))?;
         (item.file.clone().filter(|f| f.is_file()), item.dir.clone())
     };
+    // The end-to-end test: what would be opened is written down (no file
+    // manager on the CI machines' screens).
+    #[cfg(feature = "ui-test")]
+    if handle.state::<ui_test::UiTest>().is_e2e() {
+        let shown = file.as_deref().unwrap_or(&dir);
+        handle.state::<ui_test::UiTest>().step(
+            "open",
+            serde_json::json!({ "folder": folder, "path": shown }),
+        )?;
+        return Ok(true);
+    }
     let opener = handle.opener();
     match (folder, file) {
         (false, Some(file)) if !sure && asks_before_opening(&file) => Ok(false),
@@ -4098,10 +4128,13 @@ mod tests {
         for cmd in [
             "ui_test_scenario",
             "ui_test_report",
+            "ui_test_e2e",
+            "ui_test_step",
             "ui_test_windows",
             "ui_test_loaded",
         ] {
-            let body = serde_json::json!({ "report": {}, "label": "main" });
+            let body =
+                serde_json::json!({ "report": {}, "step": "link", "detail": {}, "label": "main" });
             let answer = tauri::test::get_ipc_response(
                 &webview,
                 tauri::webview::InvokeRequest {
