@@ -18,6 +18,7 @@ mod schedule;
 mod tray;
 #[cfg(feature = "ui-test")]
 mod ui_test;
+mod video;
 pub mod view;
 mod windows;
 
@@ -174,6 +175,7 @@ pub fn run() {
         ))
         .manage(app)
         .manage(windows::Shared::default())
+        .manage(video::VideoState::default())
         .manage(closing::Closing::new(
             &data,
             args.iter().any(|a| a == "--close-quits"),
@@ -236,6 +238,12 @@ pub fn run() {
             // The add windows' own permissions (`windows.rs`), and they
             // close with the main window (review of #104).
             tauri_app.add_capability(windows::CAPABILITY)?;
+            // What a video run or a tools install left when Zajil stopped
+            // (#149).
+            {
+                let app = tauri_app.state::<App>();
+                video::clean_leftovers(&app);
+            }
             tauri_app.add_capability(dropbox::CAPABILITY)?;
             // The drop box, if the user left it shown.
             if tauri_app.state::<closing::Closing>().prefs().drop_box {
@@ -344,6 +352,15 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         tray::set_tray_tooltip,
         close_quits,
         set_close_quits,
+        video::video_pending,
+        video::video_tools_status,
+        video::video_tools_install,
+        video::video_tools_cancel,
+        video::video_tools_remove,
+        video::video_probe,
+        video::video_probe_cancel,
+        video::video_download,
+        video::video_cancel,
         dropbox::drop_box_shown,
         dropbox::set_drop_box,
         quit_heard,
@@ -408,6 +425,15 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         tray::set_tray_tooltip,
         close_quits,
         set_close_quits,
+        video::video_pending,
+        video::video_tools_status,
+        video::video_tools_install,
+        video::video_tools_cancel,
+        video::video_tools_remove,
+        video::video_probe,
+        video::video_probe_cancel,
+        video::video_download,
+        video::video_cancel,
         dropbox::drop_box_shown,
         dropbox::set_drop_box,
         quit_heard,
