@@ -43,6 +43,7 @@ python test_range_connections.py
 python test_adaptive_retry.py
 python test_connection_telemetry.py
 python test_missing_file.py
+python test_connection_ramp_benchmark.py --runs 3 --label local  # اختياري: اختبار أداء محلي
 node --check web/ui.js
 node test_chrome_single_dialog.cjs
 ```
