@@ -490,6 +490,10 @@ update-setting-title = Updates
 update-setting = Check for a new version at start
 update-setting-hint = Only asks GitHub; nothing is downloaded.
 
+## حد كل موقع
+
+status-waiting-site = Site busy
+
 ## Video (M6)
 
 video-soon = Video downloads are coming soon.
