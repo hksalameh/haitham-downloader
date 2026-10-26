@@ -47,6 +47,7 @@ class AdaptiveRequestGate:
         self.inflight = 0
         self.cooldown_until = 0.0
         self.successes = 0
+        self.last_http_status = None
         self.lock = threading.RLock()
 
     def acquire(self, cancel):
@@ -87,6 +88,7 @@ class AdaptiveRequestGate:
             elif status in (500, 502, 503, 504):
                 self.limit = max(1, self.limit // 2)
             self.successes = 0
+            self.last_http_status = status
             self.cooldown_until = max(self.cooldown_until, time.monotonic() + delay)
 
     def successful_range(self):
@@ -337,6 +339,17 @@ class RangeManager:
                     previous[idx]=(now,done)
                 speeds.append(speed)
             completed=sum(sizes)
+            active_requests=0
+            connection_limit=0
+            retry_wait_seconds=0
+            last_http_status=None
+            gate=runtime.get("gate") if rec["status"]=="active" else None
+            if gate is not None:
+                with gate.lock:
+                    active_requests=gate.inflight
+                    connection_limit=gate.limit
+                    retry_wait_seconds=max(0,int(gate.cooldown_until-now+0.999))
+                    last_http_status=gate.last_http_status
             entries=[{"index":r["index"],"start":r["start"],"end":r["end"],
                      "size":r["size"],"completed":sizes[i], "speed":speeds[i],
                      "status":"complete" if sizes[i]>=r["size"] else rec["status"]}
@@ -345,7 +358,9 @@ class RangeManager:
                     "category":"other","date":rec["date"],"status":display_status,
                     "total":rec["total"],"completed":completed,"speed":sum(speeds),
                     "error":"Completed file is missing or has a different size" if display_status=="missing" else rec.get("error",""),"ranges":entries,
-                    "connection_count":len(entries),"detail_type":"connections"}
+                    "connection_count":len(entries),"detail_type":"connections",
+                    "active_requests":active_requests,"connection_limit":connection_limit,
+                    "retry_wait_seconds":retry_wait_seconds,"last_http_status":last_http_status}
 
     def list_all(self):
         with self.lock:keys=list(self.records)

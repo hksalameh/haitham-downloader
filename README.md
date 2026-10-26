@@ -32,11 +32,16 @@ python -m PyInstaller --noconfirm HaithamDownloader_Classic_420.spec
 
 المخرج `dist/HaithamDownloader_Classic_420.exe`.
 
+## قراءة الأداء أثناء التحميل
+
+في وضع HTTP Range، يعرض عمود «اتصالات/أجزاء» عدد طلبات HTTP الجارية / إجمالي أجزاء الملف. مثلًا `2/12` تعني أن طلبين فقط يعملان الآن رغم وجود 12 جزءًا. عند رد الخادم HTTP 429 قد تظهر عبارة «انتظار الخادم»؛ هذا انتظار لإعادة المحاولة، وليس سرعة صفر بسبب خط الإنترنت بالضرورة. تعرض نافذة التفاصيل الحد الحالي للطلبات، ولا تعني الأجزاء المكتملة وجود اتصالات مفتوحة.
+
 ## اختبارات
 
 ```powershell
 python test_range_connections.py
 python test_adaptive_retry.py
+python test_connection_telemetry.py
 python test_missing_file.py
 node --check web/ui.js
 node test_chrome_single_dialog.cjs
