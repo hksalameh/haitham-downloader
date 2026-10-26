@@ -240,6 +240,7 @@ pub fn run() {
             // The add windows' own permissions (`windows.rs`), and they
             // close with the main window (review of #104).
             tauri_app.add_capability(windows::CAPABILITY)?;
+            tauri_app.add_capability(video::CAPABILITY)?;
             // What a video run or a tools install left when Zajil stopped
             // (#149).
             {
@@ -271,6 +272,7 @@ pub fn run() {
                         Some("add") => Some(windows::INFO_SIZE),
                         Some("link") => Some(windows::LINK_SIZE),
                         Some("progress") => Some(windows::PROGRESS_SIZE),
+                        Some("tools" | "quality") => Some(video::SIZE),
                         _ => None,
                     };
                     // macOS: the system's title bar is drawn by the page in
@@ -357,6 +359,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         close_quits,
         set_close_quits,
         video::video_pending,
+        video::open_video,
+        video::video_folder,
         video::video_tools_status,
         video::video_tools_install,
         video::video_tools_cancel,
@@ -432,6 +436,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         close_quits,
         set_close_quits,
         video::video_pending,
+        video::open_video,
+        video::video_folder,
         video::video_tools_status,
         video::video_tools_install,
         video::video_tools_cancel,
@@ -902,6 +908,13 @@ fn serve_extension<R: tauri::Runtime>(handle: tauri::AppHandle<R>, data: PathBuf
                 let reach = extension_reach(&app.engine);
                 // The user's language, for what the extension is told.
                 let lang = app.settings.load().map(|s| s.language).unwrap_or_default();
+                // A video opens «Video quality» with its page and that
+                // page's cookies (M6, #149): the extension is told it was
+                // taken.
+                if let zajil_host::Request::Video { page, cookies, .. } = &request {
+                    video::receive(&handle, page.clone(), cookies.clone());
+                    return zajil_host::Response::ok();
+                }
                 // A Drive file's download address's cookies, asked of the
                 // browser the download came from, on its link (the
                 // extension has its ticket already).
@@ -3779,7 +3792,7 @@ async fn details<R: tauri::Runtime>(
 }
 
 /// The download folder: the one in the settings, or the system's. Blocking.
-fn download_dir(settings: &SettingsStore, system: &Path) -> PathBuf {
+pub(crate) fn download_dir(settings: &SettingsStore, system: &Path) -> PathBuf {
     settings
         .load()
         .ok()
