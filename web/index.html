@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Haitham Downloader Classic</title><link rel="stylesheet" href="/ui.css">
+<script>window.HDM_TOKEN="__TOKEN__";</script><script src="/ui.js" defer></script></head>
+<body data-theme="dark">
+<div class="shell">
+  <header class="menu-line"><div class="menustart"><strong class="app-caption"><span class="tiny-logo">⬇</span> Haitham Downloader</strong>
+    <button class="menu-btn" data-menu="tasks">المهام</button><button class="menu-btn" data-menu="file">ملف</button>
+    <button class="menu-btn" data-menu="download">التحميل</button><button class="menu-btn" data-menu="view">عرض</button>
+    <button class="menu-btn" data-menu="help">تعليمات</button></div>
+    <div class="menu-right"><span id="connection-status" class="online">● المحرك متصل</span><button id="theme" class="small-menu">◐</button><button id="language" class="small-menu">AR / EN</button></div>
+  </header>
+  <div class="ribbon" role="toolbar" aria-label="أوامر التحميل">
+    <button class="ribbon-tool" id="add-btn"><span class="glyph green">✚</span><span>إضافة رابط</span></button>
+    <button class="ribbon-tool" id="resume-btn"><span class="glyph silver">⇩</span><span>استئناف</span></button>
+    <button class="ribbon-tool" id="pause-btn"><span class="glyph silver">▣</span><span>إيقاف</span></button>
+    <button class="ribbon-tool" id="pause-all"><span class="glyph silver">✋</span><span>إيقاف الكل</span></button>
+    <button class="ribbon-tool" id="delete-selected"><span class="glyph pink">▤</span><span>حذف</span></button>
+    <button class="ribbon-tool" id="clear-complete"><span class="glyph lilac">▣</span><span>حذف المكتمل</span></button>
+    <div class="ribbon-sep"></div>
+    <button class="ribbon-tool" id="settings"><span class="glyph purple">⚙</span><span>خيارات</span></button>
+    <button class="ribbon-tool" id="schedule"><span class="glyph purple">◴</span><span>الجدولة</span></button>
+    <button class="ribbon-tool" id="startqueue"><span class="glyph blue">↧</span><span>بدء القائمة</span></button>
+    <button class="ribbon-tool" id="stopqueue"><span class="glyph purple">Ⅱ</span><span>إيقاف القائمة</span></button>
+    <div class="ribbon-sep"></div>
+    <button class="ribbon-tool" id="video-btn"><span class="glyph blue">▶</span><span>تحميل فيديو</span></button>
+  </div>
+  <div class="main-area">
+    <aside class="tree-panel"><div class="panel-heading"><b>الفئات</b><button id="tree-collapse" title="إخفاء الفئات">×</button></div>
+      <div id="nav" class="tree-nav"></div>
+      <div class="tree-tip">انقر مرتين على التحميل لفتح نافذة التقدم والاتصالات.</div>
+    </aside>
+    <section class="library">
+      <div class="library-head"><div class="left-actions"><strong id="section-title">كل التحميلات</strong> <span id="counter">0</span></div>
+      <div class="library-search"><span>⌕</span><input type="search" id="search" placeholder="بحث في التحميلات..."></div></div>
+      <div class="table-holder"><table class="download-table"><thead><tr>
+        <th class="check-head"><input id="select-all" type="checkbox" aria-label="تحديد الكل"/></th>
+        <th class="name-col">اسم الملف</th><th>الحجم</th><th>الحالة</th><th>نسبة التحميل</th><th>السرعة</th><th>الوقت المتبقي</th><th>اتصالات</th><th>وقت الإضافة</th>
+      </tr></thead><tbody id="rows"></tbody></table>
+      <div id="empty" class="empty" hidden>لا يوجد تحميلات في هذا التصنيف. اضغط «إضافة رابط» للبدء.</div></div>
+      <div class="library-footer"><span id="selection-count">لا يوجد عناصر محددة</span><button class="status-link" id="open-folder">فتح مجلد التحميلات ↗</button></div>
+    </section>
+  </div>
+  <footer class="statusbar"><span id="status-text">جاهز</span><span id="overall-speed">سرعة التحميل: 0 B/s</span><span id="status-tally">التحميلات: 0</span><span>Haitham Downloader 4.1 Classic</span></footer>
+</div>
+<div id="toast" role="status" aria-live="polite" class="toast"></div>
+<div id="download-modal" class="backdrop" hidden>
+ <form id="download-form" class="window new-download" role="dialog" aria-modal="true">
+ <header class="window-title"><strong>إضافة تحميل جديد</strong><button type="button" data-close="download-modal">×</button></header>
+ <div class="window-main">
+   <label>عنوان الملف (URL)<input id="url-input" type="url" required placeholder="https://example.com/filename.zip" dir="ltr"></label>
+   <label>اسم الملف<input id="name-input" type="text" placeholder="filename.zip"></label>
+   <label for="folder-input">حفظ في المجلد</label>
+   <div class="folder-picker-row"><input id="folder-input" type="text" dir="ltr" aria-label="مجلد حفظ الملف"><button id="browse-folder" type="button" title="استعراض المجلدات">📁 تصفح...</button></div>
+   <div class="folder-picker-row"><label class="checkbox-label"><input id="remember-last-folder" type="checkbox"> ????? ??? ???? ??? ??????? ??????</label><button id="reset-save-folder" type="button">?????? ?????? ?????????</button></div>
+   <div class="flexline"><label class="flexitem">نوع التحميل<select id="kind"><option value="file">ملف</option><option value="video">فيديو</option></select></label>
+   <label class="checkbox-label"><input type="checkbox" id="detailed-mode" checked> عرض تقدم كل اتصال على حدة</label></div>
+   <p class="hint">تُستخدم الاتصالات التفصيلية مع الملفات التي تدعم HTTP Range؛ أما المواقع الأخرى فتستخدم aria2 تلقائيًا.</p>
+ </div><footer class="window-buttons"><button type="button" data-close="download-modal">إلغاء</button><button class="confirm" type="submit" id="start-download">بدء التحميل</button></footer>
+ </form>
+</div>
+<div id="options-modal" class="backdrop" hidden><form id="settings-form" class="window settings-win" role="dialog" aria-modal="true">
+<header class="window-title"><strong>خيارات مدير التحميل</strong><button type="button" data-close="options-modal">×</button></header>
+<div class="window-main"><label>عدد الاتصالات لكل ملف (1–16)<input id="connections" type="number" min="1" max="16"></label>
+<label>التحميلات المتزامنة (1–10)<input id="concurrent" type="number" min="1" max="10"></label>
+<label for="default-folder">مجلد التحميل الافتراضي</label><div class="folder-picker-row"><input id="default-folder" type="text" dir="ltr" aria-label="مجلد التحميل الافتراضي"><button id="browse-default-folder" type="button">📁 تصفح...</button></div>
+<label for="temp-folder">???? ??????? ??????? (??????? ? ????? ?????? ??????? ?????? ??? ??? ??? ??????)</label><div class="folder-picker-row"><input id="temp-folder" type="text" dir="ltr" aria-label="???? ??????? ???????"><button id="browse-temp-folder" type="button">???????...</button></div>
+  <label class="checkbox-label"><input id="schedule-enabled" type="checkbox"> تفعيل الجدولة اليومية (طالما البرنامج يعمل)</label>
+<div class="flexline"><label class="flexitem">بدء القائمة<input id="schedule-start" type="time"></label><label class="flexitem">إيقاف القائمة<input id="schedule-stop" type="time"></label></div>
+</div><footer class="window-buttons"><button type="button" data-close="options-modal">إلغاء</button><button type="submit" class="confirm">حفظ الخيارات</button></footer>
+</form></div>
+<div id="delete-modal" class="backdrop" hidden><div class="window delete-win" role="dialog" aria-modal="true">
+<header class="window-title"><strong>حذف الملفات المحددة</strong><button type="button" data-close="delete-modal">×</button></header>
+<div class="window-main"><p id="delete-message">هل تريد حذف التحميلات المحددة؟</p><label class="checkbox-label"><input id="delete-from-disk" type="checkbox"> نقل الملفات المُحمّلة أيضًا إلى سلة المحذوفات</label>
+<p class="hint">عدم تحديد الخيار سيحذف السجلات من القائمة فقط.</p></div>
+<footer class="window-buttons"><button type="button" data-close="delete-modal">إلغاء</button><button id="confirm-delete" class="danger-button" type="button">حذف المحدد</button></footer>
+</div></div>
+<!-- Floating IDM-style progress/details window: driven by live backend counters. -->
+<div id="details-window" class="details-window" role="dialog" aria-label="تقدم التحميل والاتصالات" hidden>
+  <header id="details-header" class="details-title"><span class="details-title-icon">⇩</span><b id="details-title">تقدم التحميل</b><button id="details-close" title="إغلاق">×</button></header>
+  <div class="details-content">
+    <div class="details-meta"><div>العنوان: <b id="details-name"></b></div><div>الحالة: <b id="details-status"></b></div>
+      <div>حجم الملف: <b id="details-size"></b></div><div>المحمّل: <b id="details-downloaded"></b></div>
+      <div>السرعة: <b id="details-speed"></b></div><div>الوقت المتبقي: <b id="details-eta"></b></div>
+    </div>
+    <div class="detail-main-label"><span>التقدم الكلي</span><strong id="details-percent">0%</strong></div>
+    <div class="overall-progress"><div id="details-progress-fill"></div></div>
+    <div class="detail-panels"><div id="details-url" class="details-url"></div><div id="details-connections-count" class="connection-summary"></div></div>
+    <div class="tabs"><button class="tab selected" id="connections-tab">مخطط الاتصالات</button><button class="tab" id="details-info-tab">تفاصيل التحميل</button></div>
+    <div id="connections-view" class="connections-view">
+      <p id="segments-explanation" class="segments-explanation">اللون الأخضر = بيانات تم استقبالها، الأزرق = الجزء قيد التنزيل، الرمادي = لم يكتمل بعد.</p>
+      <div id="file-map" class="file-map"></div>
+      <div class="connections-head"><span>الاتصال / نطاق البايتات</span><span>المنزّل</span><span>السرعة</span><span>نسبة الجزء</span></div>
+      <div id="connections-list" class="connections-list"></div>
+    </div>
+    <div id="info-view" class="details-info" hidden></div>
+  </div>
+  <footer class="details-buttons"><span id="details-footer">جاهز</span><button id="details-pause">إيقاف مؤقت</button><button id="details-resume">استئناف</button><button id="details-open-folder">فتح المجلد</button><button id="details-dismiss">إغلاق</button></footer>
+</div>
+</body></html>

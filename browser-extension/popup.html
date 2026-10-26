@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>مدير تحميل هيثم</title>
+<style>
+*{box-sizing:border-box}body{width:365px;padding:20px;margin:0;background:#252525;color:#f7f7f7;font:14px "Segoe UI",Tahoma,Arial}
+header{display:flex;align-items:center;gap:10px;margin-bottom:12px}header img{width:32px;height:32px}
+h2{margin:0;font-size:18px}small,.hint{color:#bbb;line-height:1.6}
+.state{padding:9px 12px;background:#363636;border-radius:8px;margin-bottom:13px;color:#e9bd78}
+.state.ok{color:#88d5ac}
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:12px 2px;gap:10px}
+.toggle span{line-height:1.6}
+input[type=checkbox]{width:19px;height:19px;accent-color:#68b9ec;cursor:pointer}
+input[type=url]{display:block;width:100%;padding:11px;background:#3b3b3b;border:1px solid #5b5b5b;border-radius:7px;color:#fff;direction:ltr;margin:10px 0}
+.actions{display:flex;gap:9px}button{flex:1;border:0;border-radius:7px;padding:11px;background:#599ed4;color:white;font-weight:600;cursor:pointer}
+button.secondary{background:#505050}#response{min-height:18px;margin-top:12px;color:#bce9cd}
+hr{border:0;border-top:1px solid #414141}
+</style></head>
+<body>
+<header><img src="icon.png" alt=""><div><h2>Haitham Downloader</h2><small>الربط مع Chrome</small></div></header>
+<div id="state" class="state">جاري التحقق من اتصال البرنامج...</div>
+<label class="toggle"><span><b>تحويل تحميلات Chrome تلقائيًا</b><br><small>عند تعذر الاتصال، يكمل Chrome التحميل بنفسه</small></span><input id="auto" type="checkbox"></label>
+<hr>
+<small>تحميل الرابط الحالي أو رابط تضعه هنا:</small>
+<input id="url" type="url" placeholder="https://example.com/file.zip">
+<div class="actions"><button id="file">تحميل ملف</button><button class="secondary" id="video">تحميل فيديو</button></div>
+<div id="response" role="status"></div>
+<p class="hint">يمكنك أيضًا اختيار «تحميل الرابط بواسطة هيثم» بالنقر بزر الفأرة الأيمن. الروابط المحمية وبعض تحميلات المواقع قد لا تدعم التحويل.</p>
+<script src="popup.js"></script>
+</body></html>
