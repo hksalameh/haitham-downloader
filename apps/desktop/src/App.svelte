@@ -27,6 +27,7 @@
   import { setTheme } from "./lib/theme";
   import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
   import { locale, type Lang, type Digits } from "./lib/i18n.svelte";
+  import UpdateBar from "./lib/components/UpdateBar.svelte";
   import { num, size, speed } from "./lib/format";
   import type { Snapshot } from "./lib/bindings/Snapshot";
   import type { DetailsView } from "./lib/bindings/DetailsView";
@@ -830,6 +831,7 @@
       {#if !onMac()}<MenuBar can={canRun} onrun={run} />{/if}
       <Toolbar bind:search {can} {hint} onaction={doAction} />
     </header>
+    <UpdateBar />
     <div class="body">
     <Tree {snapshot} bind:filter bind:view />
     <main class="main">

@@ -539,6 +539,15 @@ complete-setting = أظهر نافذة «اكتمل التحميل» حين ين
 complete-drag = اسحبه من هنا
 complete-drag-hint = اسحب الملف من هنا إلى أي برنامج أو مجلد
 
+## التحديث
+
+update-available = توجد نسخة جديدة من زاجِل:
+update-release-page = صفحة الإصدار
+update-dismiss = إخفاء حتى التشغيل التالي
+update-setting-title = التحديثات
+update-setting = ابحث عن نسخة جديدة عند التشغيل
+update-setting-hint = يسأل GitHub فقط، ولا يُنزَّل شيء.
+
 ## الفيديو (M6)
 
 video-soon = تحميل الفيديو قادم قريبًا.

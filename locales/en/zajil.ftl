@@ -481,6 +481,15 @@ complete-setting = Show the «Download complete» window when a download finishe
 complete-drag = Drag it from here
 complete-drag-hint = Drag the file from here into any program or folder
 
+## التحديث
+
+update-available = A new version of Zajil is available:
+update-release-page = Release page
+update-dismiss = Hide until the next start
+update-setting-title = Updates
+update-setting = Check for a new version at start
+update-setting-hint = Only asks GitHub; nothing is downloaded.
+
 ## Video (M6)
 
 video-soon = Video downloads are coming soon.
