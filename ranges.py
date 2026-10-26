@@ -8,7 +8,10 @@ from __future__ import annotations
 import json, os, re, shutil, threading, time, uuid
 from pathlib import Path
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 class UnsupportedRange(Exception):
     pass
@@ -27,6 +30,71 @@ def probe(url, timeout=8):
             raise UnsupportedRange("Content size outside detailed downloader limits")
         response.read(1)
     return size
+
+class AdaptiveRequestGate:
+    """Coordinated per-download concurrency and Retry-After-aware backoff.
+
+    In-flight ranges finish safely; new requests pause when a host starts
+    rate-limiting. Saved part files are never discarded by a retry.
+    """
+    MAX_RETRIES = 8
+    BASE_DELAY = 1.5
+    MAX_BACKOFF = 30.0
+
+    def __init__(self, requested):
+        self.ceiling = max(1, int(requested))
+        self.limit = min(4, self.ceiling)
+        self.inflight = 0
+        self.cooldown_until = 0.0
+        self.successes = 0
+        self.lock = threading.RLock()
+
+    def acquire(self, cancel):
+        while not cancel.is_set():
+            with self.lock:
+                cooldown = max(0, self.cooldown_until - time.monotonic())
+                if cooldown <= 0 and self.inflight < self.limit:
+                    self.inflight += 1
+                    return True
+            cancel.wait(min(0.2, max(0.05, cooldown)) if cooldown else 0.1)
+        return False
+
+    def release(self):
+        with self.lock:
+            self.inflight -= 1
+
+    @staticmethod
+    def retry_after_seconds(header):
+        if not header:
+            return 0.0
+        try:
+            return max(0.0, float(header))
+        except (ValueError, TypeError):
+            try:
+                date = parsedate_to_datetime(header)
+                if date.tzinfo is None:
+                    date = date.replace(tzinfo=timezone.utc)
+                return max(0.0, (date - datetime.now(timezone.utc)).total_seconds())
+            except (ValueError, TypeError, OverflowError):
+                return 0.0
+
+    def throttle(self, retry_number, status=None, retry_after=None):
+        backoff = min(self.MAX_BACKOFF, self.BASE_DELAY * 2 ** min(retry_number - 1, 6))
+        delay = max(backoff, min(180.0, self.retry_after_seconds(retry_after)))
+        with self.lock:
+            if status == 429:
+                self.limit = 1
+            elif status in (500, 502, 503, 504):
+                self.limit = max(1, self.limit // 2)
+            self.successes = 0
+            self.cooldown_until = max(self.cooldown_until, time.monotonic() + delay)
+
+    def successful_range(self):
+        with self.lock:
+            self.successes += 1
+            if self.successes >= 3 and self.limit < self.ceiling:
+                self.limit += 1
+                self.successes = 0
 
 class RangeManager:
     def __init__(self, root):
@@ -100,7 +168,8 @@ class RangeManager:
                 raise RuntimeError("Previous connections are stopping; retry")
             if rec["status"]=="complete":return
             cancel=threading.Event()
-            runtime={"cancel":cancel,"samples":{},"worker":None}
+            runtime={"cancel":cancel,"samples":{},"worker":None,
+                     "gate":AdaptiveRequestGate(len(rec["ranges"]))}
             self.runtime[gid]=runtime
             rec["status"]="active";rec["error"]=""
             thread=threading.Thread(target=self._download,args=(gid,runtime),daemon=True,name=gid)
@@ -108,7 +177,7 @@ class RangeManager:
             self._save()
             thread.start()
 
-    def _download_one(self,rec,part,cancel,samples):
+    def _download_one(self,rec,part,cancel,samples,gate):
         gid=rec["gid"]
         r=part
         local=self._part(gid,r["index"])
@@ -117,12 +186,15 @@ class RangeManager:
         if written>size:raise RuntimeError("Existing partial file exceeds its range")
         retries=0
         while written<size and not cancel.is_set():
+            # The gate coordinates new requests across ALL ranges in this download.
+            if not gate.acquire(cancel):
+                break
             begin=r["start"]+written
             request=Request(rec["url"],headers={
                 "Range":f"bytes={begin}-{r['end']}",
                 "User-Agent":"HaithamDownloader/4.1"})
             try:
-                with urlopen(request,timeout=8) as reply:
+                with urlopen(request,timeout=15) as reply:
                     actual=reply.headers.get("Content-Range","")
                     m=re.match(r"^bytes\s+(\d+)-(\d+)/(\d+)$",actual)
                     if reply.status!=206 or not m or tuple(map(int,m.groups()))!=(begin,r["end"],rec["total"]):
@@ -136,11 +208,24 @@ class RangeManager:
                             with self.lock:
                                 samples[r["index"]]=(time.monotonic(),written)
                 retries=0
-            except Exception:
+                if written>=size:
+                    gate.successful_range()
+            except HTTPError as exc:
+                if cancel.is_set():break
+                if exc.code not in (429,500,502,503,504):
+                    raise  # 401, 403, 404, 416: do not blindly retry.
+                retries+=1
+                if retries>gate.MAX_RETRIES:
+                    raise RuntimeError(f"HTTP {exc.code} persisted after {gate.MAX_RETRIES} retries; partial data saved") from exc
+                gate.throttle(retries,exc.code,exc.headers.get("Retry-After") if exc.headers else None)
+            except (OSError, TimeoutError) as exc:
                 if cancel.is_set():break
                 retries+=1
-                if retries>=4:raise
-                if cancel.wait(min(retries,3)):break
+                if retries>gate.MAX_RETRIES:
+                    raise RuntimeError(f"Connection failed after {gate.MAX_RETRIES} retries; partial data saved") from exc
+                gate.throttle(retries)
+            finally:
+                gate.release()
 
     def _download(self,gid,runtime):
         from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -148,7 +233,7 @@ class RangeManager:
         cancel=runtime["cancel"]
         try:
             with ThreadPoolExecutor(max_workers=len(rec["ranges"]),thread_name_prefix="HDM") as pool:
-                futures=[pool.submit(self._download_one,rec,r,cancel,runtime["samples"]) for r in rec["ranges"]]
+                futures=[pool.submit(self._download_one,rec,r,cancel,runtime["samples"],runtime["gate"]) for r in rec["ranges"]]
                 for f in as_completed(futures):
                     try:f.result()
                     except Exception:
