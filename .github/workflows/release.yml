@@ -115,16 +115,46 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
+      # A slow package mirror held this step until its time ran out, twice in
+      # a row (#265; ci.yml had the same, #119, and caches its packages, but
+      # this runner image and list are not ci.yml's). Each try has its own
+      # time limit, up to three tries, and the second and third use Ubuntu's
+      # own mirror instead of Azure's. On GitHub's Ubuntu images apt reads
+      # its mirrors from /etc/apt/apt-mirrors.txt (Azure's first), and goes
+      # to the next only on an error, not on a slow one: Azure's line is
+      # taken out (review of #269).
       - name: Install the GUI libraries (Linux)
         if: runner.os == 'Linux'
-        timeout-minutes: 15
+        # Three tries of at most 11 minutes each (12 with the time to stop),
+        # and what runs between them.
+        timeout-minutes: 45
         env:
-          APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
+          APT_OPTIONS: -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o DPkg::Lock::Timeout=60
         run: |
           set -euo pipefail
-          sudo apt-get $APT_OPTIONS update -q
-          sudo apt-get $APT_OPTIONS install -y -q --no-install-recommends \
-            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf file
+          for try in 1 2 3; do
+            if [ "$try" != 1 ]; then
+              sleep 15
+              # A try cut off in the middle can leave dpkg half done.
+              sudo timeout -k 20 120 dpkg --configure -a || true
+              sudo timeout -k 20 120 apt-get $APT_OPTIONS -f install -y -q || true
+              if [ -f /etc/apt/apt-mirrors.txt ]; then
+                sudo sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt
+                echo "apt's mirrors now:"; cat /etc/apt/apt-mirrors.txt
+              fi
+              # Where an image names the mirror in the sources themselves.
+              [ ! -f /etc/apt/sources.list ] || sudo sed -i 's|http://azure\.archive\.ubuntu\.com/|http://archive.ubuntu.com/|g' /etc/apt/sources.list
+              [ ! -d /etc/apt/sources.list.d ] || sudo find /etc/apt/sources.list.d -type f \( -name '*.list' -o -name '*.sources' \) \
+                -exec sed -i 's|http://azure\.archive\.ubuntu\.com/|http://archive.ubuntu.com/|g' {} +
+            fi
+            if sudo timeout -k 20 300 apt-get $APT_OPTIONS update -q \
+              && sudo timeout -k 20 360 apt-get $APT_OPTIONS install -y -q --no-install-recommends \
+                libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf file; then
+              exit 0
+            fi
+            echo "::warning::installing the GUI libraries failed (try $try of 3)"
+          done
+          exit 1
       # zajil-host, the program the browsers start (ADR-0005), and the zajil
       # command, named as Tauri wants a sidecar: binaries/<name>-<target>.
       # On macOS the build script of each processor's half wants its own
