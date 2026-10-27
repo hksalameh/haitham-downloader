@@ -332,12 +332,24 @@ pub enum Arg {
     PrintFinalPath,
     /// Prints progress in a fixed form Zajil reads.
     ProgressTemplate,
+    /// The warm-up run ([`VideoRunner::warm_up`]): yt-dlp's verbose header,
+    /// which loads every library it has, then a simulated run whose every
+    /// request goes, as to a proxy, to this port of `127.0.0.1`, where
+    /// Zajil itself drops each connection: nothing leaves the machine.
+    WarmUp(u16),
     /// Tests only ([`VideoRunner::with_test_root`]): trust the system's
     /// store, where the test sets its authority, instead of the list
     /// bundled in yt-dlp. Never in a shipped build (no `test-support`).
     #[cfg(feature = "test-support")]
     TestNoCertifi,
 }
+
+/// The page the warm-up run "opens": a YouTube video, so YouTube's own
+/// code is loaded too; no request for it leaves the machine.
+const WARM_UP_URL: &str = "https://www.youtube.com/watch?v=jNQXAC9IVRw";
+/// The longest the warm-up may take: about two minutes was seen on a Mac
+/// for the first full run of a newly unpacked yt-dlp.
+const WARM_UP_TIME: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// The progress line Zajil asks for: a fixed word, then numbers or `NA`.
 const PROGRESS_PREFIX: &str = "zajil-progress";
@@ -351,6 +363,22 @@ impl Arg {
             Arg::NoRemoteComponents => add("--no-remote-components"),
             Arg::NoCacheDir => add("--no-cache-dir"),
             Arg::NoJsRuntimes => add("--no-js-runtimes"),
+            Arg::WarmUp(port) => {
+                for word in ["--verbose", "--simulate", "--proxy"] {
+                    add(word);
+                }
+                add(&format!("http://127.0.0.1:{port}/"));
+                for word in [
+                    "--socket-timeout",
+                    "5",
+                    "--retries",
+                    "0",
+                    "--extractor-retries",
+                    "0",
+                ] {
+                    add(word);
+                }
+            }
             Arg::JsRuntime(runtime) => {
                 add("--js-runtimes");
                 let (name, path) = match runtime {
@@ -1377,6 +1405,39 @@ impl VideoRunner {
             }
         }
         Ok(())
+    }
+
+    /// Starts yt-dlp once without reaching the network (owner's decision,
+    /// 2026-10-27): the first start of a newly unpacked yt-dlp is slow, as
+    /// the system checks each of its files the first time, so it happens
+    /// while Zajil says it is preparing the tools, not at the first video.
+    /// The run itself fails (it has no network) and that is fine; a tool
+    /// that cannot be checked or started is an error, and so is a stop.
+    /// It ends after [`WARM_UP_TIME`] at most.
+    pub async fn warm_up(&self, stop: &Stop) -> Result<(), VideoError> {
+        let url = checked(WARM_UP_URL)?;
+        // Every request of the run comes here, and is dropped at once: a
+        // port of our own, not one another program could listen on
+        // (review of #278).
+        let proxy = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
+        let port = proxy.local_addr()?.port();
+        let dropping = tokio::spawn(async move {
+            while let Ok((connection, _)) = proxy.accept().await {
+                drop(connection);
+            }
+        });
+        let mut args = base_args();
+        args.push(Arg::WarmUp(port));
+        let mut ignore = |_| {};
+        let run = self.run(&url, args, None, None, stop, &mut ignore);
+        let ran = tokio::time::timeout(WARM_UP_TIME, run).await;
+        dropping.abort();
+        match ran {
+            // Dropped: the run's tree is ended and its folders removed.
+            Err(_elapsed) => Ok(()),
+            Ok(Ok(_) | Err(VideoError::Tool(_) | VideoError::Drm)) => Ok(()),
+            Ok(Err(err)) => Err(err),
+        }
     }
 
     /// What `url` holds: one video and its formats, or a playlist's items.
