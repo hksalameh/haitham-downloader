@@ -7,9 +7,57 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-27
+
+The first published release: 0.2.0 was a test draft that was never published. Signed automatic updates come in 1.1 (owner's decision of 2026-10-26). This list is the titles of the pull requests merged after 0.2.0.
+
+### Features
+
+- feat: from an AppImage, browsers start a lasting copy of zajil-host (#129) (#210)
+- feat: a file announced over the grabber's limits is refused before a byte is written (#196) (#213)
+- feat(core): a queued download's own number of connections (#211) (#215)
+- feat(desktop): «Site grabber», as IDM's: check a site, choose its files, and queue them politely (#214)
+- feat(grab): each file refused over --max-total is counted as left out (#212) (#222)
+
+### Fixes
+
+- fix(desktop): at a Windows session end, end the process once everything is saved (#218)
+- fix(grab): robots.txt escapes and cut lines, more local forms, the https twin's port, the start URL (#199) (#227)
+- fix(grab): --max-pages counts every page request, the rate is per host, include/exclude match decoded paths, and more (#199) (#232)
+- fix(desktop): a new speed limit is said to apply now, as it does (#106) (#235)
+- fix(extension): the sign-in notices name the button as it is, «Allow Zajil on sites» (#157) (#236)
+- fix(desktop): a category without a name shows its id, and a damaged categories file says why (#58) (#237)
+- fix(desktop): «start with the system» shows what the system holds after a failed change (#60) (#238)
+- fix(desktop): windows opened from a button load their page on Windows (#234)
+- fix(cli): zajil video formats lists a playlist's items with links that work (#150) (#240)
+- fix(core): a download starting over records that nothing is done before it empties its file (#163) (#241)
+- fix(extension): a captured download's strict cookies go only from a page of the same site (#92) (#242)
+- fix(desktop): the Mac menu works from any window, a moved file says so, Ctrl+, on Arabic (#98) (#239)
+- fix(desktop): on macOS, one Zajil per user through its own channel, not a socket in /tmp (#60) (#243)
+- fix(desktop): «Batch download» and «Site grabber» fit their window without a page scroll (#245)
+- fix(desktop): the start line says the release's version, not 0.0.0 (#248) (#250)
+
+### Documentation
+
+- docs: a 0.2 test on macOS for the owner, under 20 minutes (#85) (#216)
+- docs: ADR-0011, signed self-updates with the project's own key (accepted, for 0.3) (#217)
+- docs: signed updates in 1.1, and SHA256SUMS signed by the update key, no GPG (#231)
+
+### Tests
+
+- test(core): the site-wait stop test stops the slow download once it has written (#224) (#225)
+- test(desktop): every window in the CI screenshots, with axe and its file names checked (M5.5) (#226)
+- test(desktop): the session-end test says how long each window took to answer (#244) (#246)
+- test(grab): the max-total test's last check is only that the server did not send it all (#221) (#249)
+
+### CI
+
+- ci: the GUI libraries come from the cache when it has them (#119) (#223)
+- ci(ffmpeg): no build for pins or README, a weekly run, cancel on PRs only, current comments (#173) (#228)
+
 ## [0.2.0] - 2026-10-26
 
-The first published build. 0.1.0 was a test draft that was never published (owner's decision of 2026-10-26): its changes are here too. This list is the titles of the pull requests merged before it; the notes each pull request wrote follow under «Details».
+The first build of the release workflow, a draft that was never published (see 1.0.0). 0.1.0 was a test draft that was never published (owner's decision of 2026-10-26): its changes are here too. This list is the titles of the pull requests merged before it; the notes each pull request wrote follow under «Details».
 
 ### Features
 
@@ -247,5 +295,6 @@ The first published build. 0.1.0 was a test draft that was never published (owne
     - `io.github.motalim_ai.zajil` for Linux and the Native Messaging host (`.host`).
   - FTP moved to 1.x.
 
-[Unreleased]: https://github.com/motalim-ai/zajil-download-manager/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/motalim-ai/zajil-download-manager/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.0.0
 [0.2.0]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v0.2.0
