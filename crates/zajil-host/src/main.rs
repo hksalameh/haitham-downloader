@@ -13,6 +13,9 @@
 //! extension's link to the app for the rest of its life ([`link`]): Zajil
 //! asks that browser for cookies on it. The link never starts the app.
 //!
+//! A `ping` is answered by the host itself, with Zajil's language read from
+//! its settings (read only; the extension's video button speaks it).
+//!
 //! Nothing is written to stderr that the browser would need: Chrome keeps
 //! it in its log, Firefox in the browser console.
 
@@ -59,7 +62,9 @@ fn main() -> ExitCode {
         };
         let answer = match parse(&message) {
             Err(why) => write_json(&mut output, &Response::refused(why)),
-            Ok(Request::Ping { .. }) => write_json(&mut output, &Response::ok()),
+            Ok(Request::Ping { .. }) => {
+                write_json(&mut output, &Response::pong(language(&data_dir)))
+            }
             // Only another start of Zajil asks for its window (#60).
             Ok(Request::ShowWindow { .. }) => {
                 write_json(&mut output, &Response::refused("not from the browser"))
@@ -160,6 +165,18 @@ fn link(data_dir: &Path, hello: &[u8], mut output: io::StdoutLock<'static>) -> E
         }
         std::thread::sleep(LINK_RETRY);
     }
+}
+
+/// Zajil's language in its settings (`settings.json` in the data folder;
+/// none yet is the default, Arabic), or none when they cannot be read.
+fn language(data_dir: &Path) -> Option<&'static str> {
+    let settings = zajil_core::settings::SettingsStore::new(data_dir)
+        .load()
+        .ok()?;
+    Some(match settings.language {
+        zajil_core::settings::Language::Ar => "ar",
+        zajil_core::settings::Language::En => "en",
+    })
 }
 
 fn data_dir() -> Result<PathBuf, String> {
