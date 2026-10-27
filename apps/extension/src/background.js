@@ -5,7 +5,7 @@
 // stops when idle and is woken by these events.
 
 import { api, onNewDownload, pausesSafely, withDownloadUiHidden } from "./compat.js";
-import { HOST, PROTOCOL_VERSION, isPageRefusal, isWeb, menuMessage, needsSignIn, send, shouldCapture, takeOver, videoMessage } from "./capture.js";
+import { HOST, HOST_PROBLEMS, PROTOCOL_VERSION, isPageRefusal, isWeb, menuMessage, needsSignIn, send, shouldCapture, takeOver, videoMessage } from "./capture.js";
 import { cookieHeader, cookiesAllowed, otherSite, videoAllowed } from "./cookies.js";
 import { load } from "./settings.js";
 import { forgetTicket, instanceId, newTicket, plainStore, rememberTicket, startLink } from "./link.js";
@@ -73,6 +73,12 @@ async function report(result, where, about = {}) {
     if (!inPrivate && !allowed) actions.push({ action: "allow", title: t("cookiesAllow") });
     if (!inPrivate && menu && url) actions.push({ action: "browser", title: t("downloadWithBrowser") });
     await notify(text, actions, url, store);
+    return;
+  }
+  // zajil-host's own failure: in Zajil's language, with no detail of the
+  // system (#264).
+  if (where === "video" && result.code) {
+    await notify(await hostText(result.code));
     return;
   }
   // A video Zajil refuses: its own answer, in the user's language («Video
@@ -414,6 +420,13 @@ async function textIn(lang, key) {
   return typeof all?.[key]?.message === "string" ? all[key].message : t(key);
 }
 
+/** What zajil-host's own failure `code` says, in Zajil's language.
+ * @param {string} code */
+async function hostText(code) {
+  const key = HOST_PROBLEMS[/** @type {keyof typeof HOST_PROBLEMS} */ (code)] ?? "hostUnreachable";
+  return textIn(await zajilLanguage(), key);
+}
+
 /** The button's texts, in Zajil's language. */
 async function buttonTexts() {
   const lang = await zajilLanguage();
@@ -431,6 +444,7 @@ async function buttonTexts() {
  */
 async function buttonAnswer(result) {
   if (result !== "not-web" && result.outcome === "taken") return { taken: true };
+  if (result !== "not-web" && result.code) return { taken: false, error: await hostText(result.code) };
   if (result !== "not-web" && result.outcome === "refused" && result.error) return { taken: false, error: result.error.slice(0, 300) };
   const lang = await zajilLanguage();
   const key = result === "not-web" ? "videoNotWeb" : TEXTS.video[/** @type {"refused" | "unknown" | "unreachable"} */ (result.outcome)];
