@@ -4,7 +4,7 @@
 // Every listener is added at once, at the top: a Manifest V3 background
 // stops when idle and is woken by these events.
 
-import { api, onNewDownload, pausesSafely } from "./compat.js";
+import { api, onNewDownload, pausesSafely, withDownloadUiHidden } from "./compat.js";
 import { PROTOCOL_VERSION, isPageRefusal, isWeb, menuMessage, needsSignIn, send, shouldCapture, takeOver, videoMessage } from "./capture.js";
 import { cookieHeader, cookiesAllowed, otherSite, videoAllowed } from "./cookies.js";
 import { load } from "./settings.js";
@@ -188,32 +188,51 @@ function leftToBrowser(item) {
   });
 }
 
-onNewDownload(api, (item) => {
-  void (async () => {
-    const settings = await load(api);
-    if (!shouldCapture(item, settings, api.runtime.id)) return;
-    if (await leftToBrowser(item)) return;
-    const pause = pausesSafely(api);
-    const url = item.finalUrl || item.url;
-    // Strict cookies (`SameSite=Strict`) go only as the browser sends them:
-    // from a page of the same site (#92: a link from another site, which
-    // the browser fetches without them, got them in Zajil). With no page
-    // to tell by (no referrer), none.
-    const page = typeof item.referrer === "string" && item.referrer ? item.referrer : undefined;
-    const strict = { from: page, noStrict: page === undefined };
-    const cookies = await cookieHeader(api, url, item.cookieStoreId, strict);
-    const ticket = newTicket();
-    // While it is open, Zajil may ask for its cookies again after a
-    // restart, and for its file's download address while taking it (a
-    // Google Drive link): kept before Zajil is asked, without the strict
-    // ones when they did not go now.
-    const how = { noStrict: page === undefined || otherSite(page, url) };
-    if (cookies) await rememberTicket(api, ticket, url, plainStore(item.cookieStoreId), undefined, how);
-    const result = await takeOver(api, item, { pause, cookies, instance: await instanceId(api), ticket });
-    if (cookies) await settleTicket(result, ticket, url, plainStore(item.cookieStoreId), how);
-    await report(result, pause ? "paused" : "running", { sentCookies: Boolean(cookies) });
-  })();
+// The browser's download UI back at every start of the background: one
+// stopped in the middle of a hand-over left it hidden (review of #253;
+// Chrome forgets it only when the extension is unloaded). Before any
+// listener can hide it again.
+void api.downloads.setUiOptions?.({ enabled: true })?.catch(() => {});
+
+onNewDownload(api, async (item, ready) => {
+  const settings = await load(api);
+  if (!shouldCapture(item, settings, api.runtime.id)) return;
+  if (await leftToBrowser(item)) return;
+  // Hidden before Chrome settles the download (`ready`), so the browser
+  // does not show a download Zajil takes; back once it is handed over.
+  await withDownloadUiHidden(api, () => {
+    ready();
+    return handOver(item);
+  });
 });
+
+/**
+ * Asks Zajil to take a captured browser download, with its cookies when
+ * allowed, and says what came of it.
+ *
+ * @param {any} item a `downloads.DownloadItem`
+ */
+async function handOver(item) {
+  const pause = pausesSafely(api);
+  const url = item.finalUrl || item.url;
+  // Strict cookies (`SameSite=Strict`) go only as the browser sends them:
+  // from a page of the same site (#92: a link from another site, which
+  // the browser fetches without them, got them in Zajil). With no page
+  // to tell by (no referrer), none.
+  const page = typeof item.referrer === "string" && item.referrer ? item.referrer : undefined;
+  const strict = { from: page, noStrict: page === undefined };
+  const cookies = await cookieHeader(api, url, item.cookieStoreId, strict);
+  const ticket = newTicket();
+  // While it is open, Zajil may ask for its cookies again after a
+  // restart, and for its file's download address while taking it (a
+  // Google Drive link): kept before Zajil is asked, without the strict
+  // ones when they did not go now.
+  const how = { noStrict: page === undefined || otherSite(page, url) };
+  if (cookies) await rememberTicket(api, ticket, url, plainStore(item.cookieStoreId), undefined, how);
+  const result = await takeOver(api, item, { pause, cookies, instance: await instanceId(api), ticket });
+  if (cookies) await settleTicket(result, ticket, url, plainStore(item.cookieStoreId), how);
+  await report(result, pause ? "paused" : "running", { sentCookies: Boolean(cookies) });
+}
 
 api.runtime.onInstalled.addListener((/** @type {any} */ details) => {
   api.contextMenus.create({ id: MENU, title: t("menuDownloadLink"), contexts: ["link"] });

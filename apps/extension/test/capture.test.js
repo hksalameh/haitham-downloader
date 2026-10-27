@@ -11,7 +11,7 @@ import {
   takeOver,
   videoMessage,
 } from "../src/capture.js";
-import { pausesSafely } from "../src/compat.js";
+import { DECIDE_MS, onNewDownload, pausesSafely, withDownloadUiHidden } from "../src/compat.js";
 import { defaults } from "../src/settings.js";
 
 const item = (over = {}) => ({
@@ -251,5 +251,98 @@ describe("videoMessage (M6)", () => {
     const sent = videoMessage({ pageUrl: "https://example.com/v" }, { cookies: "a=1", private: true });
     expect(sent).toMatchObject({ private: true });
     expect(sent?.cookies).toBeUndefined();
+  });
+});
+
+describe("the browser's download UI while Zajil takes a download", () => {
+  /** Chrome's `downloads.setUiOptions`, recording what it was told. */
+  function uiApi() {
+    const told = [];
+    return { told, downloads: { setUiOptions: vi.fn(async (options) => void told.push(options.enabled)) } };
+  }
+
+  it("is hidden while the download is handed over, and comes back after", async () => {
+    const browserApi = uiApi();
+    const seen = await withDownloadUiHidden(browserApi, async () => [...browserApi.told]);
+    expect(seen).toEqual([false]);
+    expect(browserApi.told).toEqual([false, true]);
+  });
+
+  it("comes back when the hand-over fails", async () => {
+    const browserApi = uiApi();
+    await expect(withDownloadUiHidden(browserApi, async () => Promise.reject(new Error("no")))).rejects.toThrow("no");
+    expect(browserApi.told).toEqual([false, true]);
+  });
+
+  it("stays hidden until the last of two hand-overs at once is done", async () => {
+    const browserApi = uiApi();
+    /** @type {() => void} */
+    let finishFirst = () => {};
+    const first = withDownloadUiHidden(browserApi, () => new Promise((done) => (finishFirst = () => done(1))));
+    const second = withDownloadUiHidden(browserApi, async () => 2);
+    expect(await second).toBe(2);
+    expect(browserApi.told).toEqual([false]);
+    finishFirst();
+    expect(await first).toBe(1);
+    expect(browserApi.told).toEqual([false, true]);
+  });
+
+  it("is left alone in Firefox, which has no such call", async () => {
+    const browserApi = { downloads: {} };
+    expect(await withDownloadUiHidden(browserApi, async () => "ran")).toBe("ran");
+  });
+
+  it("a refused call does not stop the hand-over", async () => {
+    const browserApi = { downloads: { setUiOptions: vi.fn(async () => Promise.reject(new Error("no permission"))) } };
+    expect(await withDownloadUiHidden(browserApi, async () => "ran")).toBe("ran");
+    expect(browserApi.downloads.setUiOptions).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("a new download in Chrome waits for the extension to decide", () => {
+  /** Chrome's `onDeterminingFilename`, with the listener the extension added. */
+  function chromeApi() {
+    /** @type {any} */
+    let listener;
+    return { fire: (/** @type {any} */ item, /** @type {() => void} */ suggest) => listener(item, suggest), downloads: { onDeterminingFilename: { addListener: (/** @type {any} */ l) => (listener = l) } } };
+  }
+
+  it("settles once the handler is ready, and only once", async () => {
+    const browser = chromeApi();
+    /** @type {() => void} */
+    let goOn = () => {};
+    onNewDownload(browser, (_item, ready) => new Promise((done) => (goOn = () => { ready(); done(undefined); })));
+    const suggest = vi.fn();
+    expect(browser.fire({ id: 1 }, suggest)).toBe(true);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(suggest).not.toHaveBeenCalled();
+    goOn();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(suggest).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles when the handler fails, or takes too long", async () => {
+    const failing = chromeApi();
+    onNewDownload(failing, async () => {
+      throw new Error("storage");
+    });
+    const first = vi.fn();
+    failing.fire({ id: 2 }, first);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(first).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+    try {
+      const slow = chromeApi();
+      onNewDownload(slow, () => new Promise(() => {}));
+      const second = vi.fn();
+      slow.fire({ id: 3 }, second);
+      await vi.advanceTimersByTimeAsync(DECIDE_MS - 1);
+      expect(second).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(second).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
