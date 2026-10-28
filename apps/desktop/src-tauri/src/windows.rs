@@ -26,12 +26,15 @@ pub const PROGRESS_CAPABILITY: &str = include_str!("../runtime-capabilities/prog
 pub const LINK: &str = "add-link";
 pub const INFO: &str = "add-info";
 
-/// The «Add a link» window's size, in logical pixels: its width is also
-/// its least; its height only until the page makes it as tall as what it
-/// shows ([`fit_window`]).
-pub const LINK_SIZE: (f64, f64) = (560.0, 230.0);
-/// The «Download file info» window's, the same way.
-pub const INFO_SIZE: (f64, f64) = (560.0, 260.0);
+/// The «Add a link» window's size, in logical pixels, and its least: the
+/// page makes it taller when what it shows needs more ([`fit_window`]).
+/// Its link, its note and its buttons, with room under them.
+pub const LINK_SIZE: (f64, f64) = (560.0, 190.0);
+/// The «Download file info» window's, the same way: the server's answer
+/// with every row (the line about the file, the link, the category, «Save
+/// as», the description and the buttons), with room under them, so it
+/// opens at the size it keeps (the owner's notes on the 1.0 draft).
+pub const INFO_SIZE: (f64, f64) = (560.0, 290.0);
 
 /// A progress window's size with its details shown (design window 4).
 pub const PROGRESS_SIZE: (f64, f64) = (600.0, 640.0);
@@ -220,36 +223,53 @@ pub async fn open_add_info<R: tauri::Runtime>(
     open(&handle, INFO, &title, INFO_SIZE).map_err(|e| e.to_string())
 }
 
-/// Makes the add window that asks exactly as tall as what its page shows
-/// (`height`, in logical pixels, measured by the page whenever it
-/// changes), and never shorter: the owner's notes on 1.0, the content was
-/// cut at the top and a scroll bar came at a fixed 260. Its width stays
-/// the user's. In a scene, the main window that draws it fits it the same
-/// way, without the least size.
+/// Makes the add window that asks as tall as what its page shows
+/// (`height`, in logical pixels from the top of the page, measured by the
+/// page whenever it changes), and never shorter: the owner's notes on 1.0,
+/// the content was cut at the top and a scroll bar came at a fixed 260.
+/// Never shorter than it opened either, whatever the page says (the 1.0
+/// draft: a page scrolled by the focus measured itself short, and the
+/// window shrank under its content). Its width stays the user's. In a
+/// scene, the main window that draws it fits it the same way, without the
+/// least size.
+///
+/// `page`: the page's own height now. On macOS it can be less than the
+/// window's content (the CI's windows: 32 pixels less, though Tauri gave
+/// the page's frame as the whole content); what a kind of window misses
+/// is learned at its first call, before anything resized it, and added
+/// from then on.
 #[tauri::command]
 pub async fn fit_window<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     height: f64,
+    page: f64,
 ) -> Result<(), String> {
-    if !(height.is_finite() && height > 0.0) {
-        return Err(format!("not a height: {height}"));
+    if !(height.is_finite() && height > 0.0 && page.is_finite() && page > 0.0) {
+        return Err(format!("not a height: {height}, {page}"));
     }
     let label = window.label();
-    let least = if label == LINK {
-        Some(LINK_SIZE.0)
+    let (kind, least, opened) = if label == LINK {
+        (LINK, Some(LINK_SIZE.0), LINK_SIZE.1)
     } else if label.starts_with(INFO) {
-        Some(INFO_SIZE.0)
-    } else if label == "main" && crate::in_scene(window.app_handle()) {
-        None
+        (INFO, Some(INFO_SIZE.0), INFO_SIZE.1)
+    } else if let Some((_, opened)) = crate::scene_size(window.app_handle())
+        && label == "main"
+    {
+        ("main", None, opened)
     } else {
         return Err("not an add window".into());
     };
     let scale = window.scale_factor().map_err(|e| e.to_string())?;
-    let width = window
+    let now = window
         .inner_size()
         .map_err(|e| e.to_string())?
-        .to_logical::<f64>(scale)
-        .width;
+        .to_logical::<f64>(scale);
+    let missing = *MISSING
+        .lock()
+        .unwrap()
+        .entry(kind)
+        .or_insert((now.height - page).clamp(0.0, 100.0));
+    let height = height.max(opened) + missing;
     // The least first: a window going shorter is not held by the old one.
     if let Some(least) = least {
         window
@@ -257,9 +277,14 @@ pub async fn fit_window<R: tauri::Runtime>(
             .map_err(|e| e.to_string())?;
     }
     window
-        .set_size(tauri::LogicalSize::new(width, height))
+        .set_size(tauri::LogicalSize::new(now.width, height))
         .map_err(|e| e.to_string())
 }
+
+/// What the page of each kind of add window misses of its content's
+/// height ([`fit_window`]).
+static MISSING: std::sync::LazyLock<Mutex<std::collections::HashMap<&'static str, f64>>> =
+    std::sync::LazyLock::new(Default::default);
 
 /// What [`open_add_info`] answers while «Download file info» is open: the
 /// page says it in the user's language.
