@@ -7,6 +7,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-10-29
+
+Fixes for what the owner found while downloading a YouTube playlist. The cause of the video tools asked for again was found in Zajil's new log. Tried by hand on macOS by the owner; on Windows and Linux, checked by CI only.
+
+### Added
+
+- **«Resume all»** in the toolbar and the «Downloads» menu: every paused or failed download, of every queue and the videos, starts again, so what «Pause all» stopped comes back (owner's report, 2026-10-29). Ctrl+Shift+R, or ⌘⌥R on macOS.
+- **«New queue» in the main window,** under «Queues» in the tree, its name typed in place (it was only in the schedule window), and **«New queue…» at the end of the queue list** of «Download file info» and of batch download, for the download being added (owner's request, 2026-10-29). A queue's name may now have single spaces between words, as a category's.
+- **Videos at once** in Settings › Video tools: 1 to 8, 3 by default (it was always 2), applied at once.
+
+### Fixed
+
+- **YouTube downloads ran to 90% at once, then crawled for minutes** (owner's report, 2026-10-29: 98% at 31 KB/s). YouTube slows a request for much more than 10 MiB to the video's own pace, and Zajil's first request asked for the whole file; its segment was the last to end, too small left to split. YouTube's parts are now asked for in requests of at most 10 MiB (`Options::request_size`, as yt-dlp's `http_chunk_size`), the whole-file response is let go before its body, the picture takes 16 connections and the sound 8 (were 8 and 4), and a free connection takes over the whole of a slow tail too small to halve.
+- **A stopped YouTube video chosen as HLS could never go on:** YouTube numbers an HLS format anew at each read (`96-2`, then `96-1`), and resuming failed with «the chosen format is not one the probe found». A format the new read no longer offers now goes at the engine's best.
+- **A playlist's YouTube videos went as HLS** (itag 96), piece by piece through yt-dlp and never resumed: the best choice now takes a direct file before an HLS playlist of the same kind, which Zajil's own engine downloads with several connections and resumes.
+
+- **The video tools asked for again while they were there** (owner's reports, 2026-10-29; a playlist made it happen at once): checking yt-dlp kept its 134 files open until the check ended, and two checks at once took macOS past a program's 256 open files («Too many open files»), so yt-dlp was taken for missing. Each file is now closed once hashed (Windows keeps them open, locked, as before), Zajil asks the system for its full limit of open files at the start, and a tool that still fails its check is checked once more a moment later, the first failure said in the log.
+- **A log file when Zajil is started from the Finder, the Start menu or a desktop file:** what it says went nowhere; it now goes to `zajil.log` in the system's log folder (`~/Library/Logs/zajil` on macOS), moved to `zajil.log.1` past 2 MiB. A terminal keeps it as before.
+
 ## [1.1.1] - 2026-10-29
 
 Fixes for what the owner found right after trying 1.1. Tried by hand on macOS by the owner; on Windows and Linux, checked by CI only.
@@ -379,7 +398,8 @@ The first build of the release workflow, a draft that was never published (see 1
     - `io.github.motalim_ai.zajil` for Linux and the Native Messaging host (`.host`).
   - FTP moved to 1.x.
 
-[Unreleased]: https://github.com/motalim-ai/zajil-download-manager/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/motalim-ai/zajil-download-manager/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.2
 [1.1.1]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.1
 [1.1.0]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.0
 [1.0.0]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.0.0
