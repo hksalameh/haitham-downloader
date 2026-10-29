@@ -525,7 +525,7 @@ win-close = Close
 tray-still-running = Zajil is still running in the system tray, and the downloads go on. Choose “Quit Zajil” from its icon to quit.
 settings-closing = Closing the window
 settings-closing-label = Closing the window quits Zajil
-settings-closing-hint = Without this, the window hides and Zajil stays in the system tray while the downloads go on, as in IDM.
+settings-closing-hint = Without this, the window hides and Zajil stays in the system tray while the downloads go on.
 settings-closing-no-tray = This desktop shows no system tray, so closing the window always quits Zajil (asking first while downloads run).
 
 ## M5.5: the progress window (design window 4)
@@ -574,7 +574,7 @@ add-save-as = Save as
 add-choose-folder = Choose a folder
 last-try-yesterday = Yesterday { $time }
 
-## The toolbar as the user leaves it (M5.5, an IDM touch)
+## The toolbar as the user leaves it (M5.5)
 tb-big = Big buttons
 tb-small = Small buttons
 tb-customize = Customize the toolbar…
@@ -584,14 +584,14 @@ tb-later = Move “{ $name }” later
 tb-reset = Reset
 tb-done = Done
 
-## The drop box (M5.5, an IDM touch)
+## The drop box (M5.5)
 drop-box = Drop box
 drop-hint = Drag a link here to download it. Right-click it for a batch download, or to hide it.
 tray-drop-box = Show the drop box
 settings-drop-box-label = Show the drop box above all windows
 settings-drop-box-hint = A small box with Zajil's mark: drag a link from the browser onto it to open “Download file info”. Drag it to move it; right-click it for a batch download, or to hide it.
 
-## The table's queue column, «Remove from queue», and deleting what has not finished (M5.5, IDM touches)
+## The table's queue column, «Remove from queue», and deleting what has not finished (M5.5)
 col-queue = Queue
 cmd-remove-from-queue = Remove from queue
 delete-unfinished =
@@ -645,6 +645,8 @@ video-error-challenge = Zajil could not pass YouTube's check for this video. Try
 video-error-other = This video could not be downloaded.
 video-error-other-details = This video could not be downloaded. Details: { $details }
 video-error-details = Details
+video-started-reading = Zajil is reading the video…
+video-size = Size
 
 ## Video downloads in the list (M6, #149)
 queue-video = Video
@@ -666,24 +668,24 @@ about-or-later = { $license } or later
 about-not-ours = Zajil does not own these tools; they belong to their projects:
 tool-license-yt-dlp = { $binary } for the file Zajil downloads (its source code: { $source })
 
-## Sounds (M5.5, an IDM touch)
+## Sounds (M5.5)
 settings-sounds = Sounds
 settings-sound-done = A sound when a download finishes
 settings-sound-failed = A sound when a download fails
 settings-sound-queue = A sound when a queue finishes
 settings-sound-try = Play the sound
 
-## How a new download shows (M5.5, IDM touches)
+## How a new download shows (M5.5)
 settings-new-download = New downloads
 settings-progress-window = The progress window when a download starts from “Download file info”:
 settings-progress-shown = Shown
 settings-progress-minimized = Shown minimized
 settings-progress-hidden = Not shown
 settings-start-while-open = Start downloading while the window is open
-settings-start-while-open-hint = The download starts in the background as soon as the server answers, while you are still in “Download file info”. “Cancel” removes it and deletes its unfinished file.
+settings-start-while-open-hint = The download starts in the background as soon as the server answers, while you are still in “Download file info”. “Start download” moves it to the folder and name you chose; “Cancel” removes it and deletes its unfinished file.
 settings-browser-at-once = Start browser downloads at once, without asking
 settings-browser-at-once-hint = A download from the browser starts without “Download file info”. Programs (such as .exe) still ask first.
-add-started-note = The download has started in the background, so its name and folder can no longer change. The category and description can.
+add-started-note = The download has started in the background. Change its name or folder as you like: the file moves there when you press “Start download”.
 
 ## Batch download (M7)
 cmd-batch = Batch download…
@@ -782,3 +784,28 @@ grab-error-max_files = The files are from { $min } to { $max }.
 grab-error-max_total = The size cannot be zero.
 grab-error-types = Choose one type at least, or write an extension.
 grab-error-site = «{ $site }» is not a site's name: write the name alone, such as { $example }.
+
+## The settings window's sections (a window of its own, its sections at its side).
+settings-section-general = General
+settings-section-types = File types
+settings-section-saveto = Save to
+settings-section-downloads = Downloads
+settings-section-connection = Connection
+settings-section-proxy = Proxy
+settings-section-logins = Site logins
+settings-section-sounds = Sounds
+settings-section-speed = Speed limiter
+settings-section-appearance = Appearance
+settings-double-click = Double-clicking a finished download
+settings-double-click-open = Opens the file
+settings-double-click-folder = Opens the folder that has the file
+settings-double-click-details = Shows the download's details
+settings-double-click-hint = A download that has not finished always shows its progress window.
+settings-proxy = Proxy
+settings-proxy-none = No proxy
+settings-proxy-use = Use this proxy
+settings-proxy-save = Save
+settings-proxy-saved = Saved. It applies the next time Zajil starts.
+settings-proxy-hint = Write it as http://host:port. Every download goes through it, and sites' certificates are still checked. A user name or password in it is not accepted.
+settings-logins-hint = Zajil uses your browser's logins (cookies) for every download the extension sends, and saves no passwords. If a download from a site you are logged in to does not arrive, fix the browser link here.
+settings-types-hint = Categories tell each file's type from its extension or its site, with a folder for each type. Change them in the categories editor.

@@ -119,6 +119,20 @@ pub enum Request {
         /// done, as for [`Request::Download`].
         #[serde(default)]
         private: bool,
+        /// The format chosen in the button's list (owner, 2026-10-29): a
+        /// YouTube itag, downloaded at once without «Video quality».
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        format: Option<String>,
+        /// The sound merged with `format`, when it is a picture only.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        audio: Option<String>,
+        /// How the list said the chosen quality (`MP4 1080p60 · H.264`),
+        /// shown as it is in «Video quality».
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
+        /// The chosen quality's size, picture and sound, as the page said.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        size: Option<u64>,
     },
     /// The extension's video button showed over a video (owner,
     /// 2026-10-28, as IDM): Zajil reads its page now, in the background,
@@ -509,8 +523,29 @@ fn check(request: &Request) -> Result<(), String> {
             media,
             cookies,
             private,
+            format,
+            audio,
+            label,
             ..
         } => {
+            if let Some(label) = label
+                && (label.is_empty()
+                    || label.len() > 120
+                    || label.chars().any(|c| {
+                        c.is_control()
+                            || matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+                    }))
+            {
+                return Err("not a label of the list".into());
+            }
+            for id in [format, audio].into_iter().flatten() {
+                if id.is_empty() || id.len() > 8 || !id.bytes().all(|b| b.is_ascii_digit()) {
+                    return Err("not a format of the list".into());
+                }
+            }
+            if audio.is_some() && format.is_none() {
+                return Err("a sound without its picture".into());
+            }
             // A private window's cookies never go (review: the extension
             // never sends them; refused here too).
             if *private && cookies.is_some() {
@@ -1014,6 +1049,10 @@ mod tests {
                 media: Some("https://cdn.example.com/v.mp4".into()),
                 cookies: Some("a=1".into()),
                 private: false,
+                format: None,
+                audio: None,
+                label: None,
+                size: None,
             }
         );
         assert_eq!(
@@ -1025,8 +1064,34 @@ mod tests {
                 media: None,
                 cookies: None,
                 private: false,
+                format: None,
+                audio: None,
+                label: None,
+                size: None,
             }
         );
+        assert_eq!(
+            parse(br#"{"type":"video","protocol_version":1,"page":"https://www.youtube.com/watch?v=x","format":"299","audio":"140"}"#)
+                .unwrap(),
+            Request::Video {
+                protocol_version: 1,
+                page: "https://www.youtube.com/watch?v=x".into(),
+                media: None,
+                cookies: None,
+                private: false,
+                format: Some("299".into()),
+                audio: Some("140".into()),
+                label: None,
+                size: None,
+            }
+        );
+        for bad in [
+            r#"{"type":"video","protocol_version":1,"page":"https://e.com/","format":"all"}"#,
+            r#"{"type":"video","protocol_version":1,"page":"https://e.com/","format":"-1"}"#,
+            r#"{"type":"video","protocol_version":1,"page":"https://e.com/","audio":"140"}"#,
+        ] {
+            assert!(parse(bad.as_bytes()).is_err(), "{bad}");
+        }
         for (message, why) in [
             (r#"{"type":"video","protocol_version":1}"#, "missing field"),
             (

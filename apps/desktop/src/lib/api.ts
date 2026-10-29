@@ -3,9 +3,11 @@
 // tests are in ../uitest/api.ts, never in a release build.
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { IntegrationView } from "./bindings/IntegrationView";
 import type { AddRequest } from "./bindings/AddRequest";
 import type { DetailsView } from "./bindings/DetailsView";
+import type { StartedView } from "./bindings/StartedView";
 import type { PendingLink } from "./bindings/PendingLink";
 import type { Sounds } from "./bindings/Sounds";
 import type { AddPrefs } from "./bindings/AddPrefs";
@@ -28,10 +30,12 @@ import type { SettingsView } from "./bindings/SettingsView";
 import type { SettingsChange } from "./bindings/SettingsChange";
 import type { CategoryView } from "./bindings/CategoryView";
 import type { ImportView } from "./bindings/ImportView";
+import type { Role } from "./bindings/Role";
 
 export const api = {
   snapshot: () => invoke<Snapshot>("snapshot"),
   probe: (url: string) => invoke<ProbeView>("probe", { url }),
+  guessInfo: (url: string) => invoke<ProbeView>("guess_info", { url }),
   cancelProbe: () => invoke<void>("cancel_probe"),
   /** The tray menu's texts, and the notification the first time the
    * window hides into the tray. */
@@ -122,6 +126,31 @@ export const api = {
   /** The add window that asks becomes `height` tall (logical pixels), and
    * no shorter; `page`: the page's own height now. */
   fitWindow: (height: number, page: number) => invoke<void>("fit_window", { height, page }),
+  /** The role of this window, made beforehand and hidden: `null` until it
+   * takes one. */
+  windowRole: () => invoke<Role | null>("window_role"),
+  /** Only this window's role: a plain `listen` hears every window's. */
+  onWindowRole: (handler: (role: Role) => void): Promise<UnlistenFn> =>
+    getCurrentWebviewWindow().listen<Role>("window-role", (event) => handler(event.payload)),
+  /** «Download file info» started download `id` in the background: closing
+   * the window without placing it removes it with its files. */
+  holdStarted: (id: number) => invoke<void>("hold_started", { id }),
+  /** The download this window started goes to `folder` under `name` (each
+   * `null`: as it is), then runs on (`start`) or waits paused. */
+  placeStarted: (folder: string | null, name: string | null, start: boolean, connections: number | null) =>
+    invoke<number>("place_started", { folder, name, start, connections }),
+  /** This window's page drew its first frame (timed with `ZAJIL_MEASURE=1`). */
+  windowPainted: () => invoke<void>("window_painted"),
+  windowReady: () => invoke<void>("window_ready"),
+  /** The settings window (a window of its own), titled `title`. */
+  openSettings: (title: string) => invoke<void>("open_settings", { title }),
+  /** Saved in any window: every window follows. */
+  onSettingsChanged: (handler: (settings: SettingsView) => void): Promise<UnlistenFn> =>
+    listen<SettingsView>("settings-changed", (event) => handler(event.payload)),
+  /** The proxy every download goes through (`null`: none); a change
+   * applies when Zajil next starts. */
+  proxySetting: () => invoke<string | null>("proxy_setting"),
+  setProxy: (proxy: string | null) => invoke<void>("set_proxy", { proxy }),
   /** Closes the window that asks. */
   closeWindow: () => invoke<void>("close_window"),
   /** The main window, on `view` («New category»: the categories). */
@@ -167,6 +196,13 @@ export const api = {
     invoke<number>("video_download", { url, choice, dest, name }),
   videoAddMany: (page: string, items: NewVideo[], dest: string) => invoke<number[]>("video_add_many", { page, items, dest }),
   videoCancel: (id: number) => invoke<void>("video_cancel", { id }),
+  /** The download a format chosen in the browser started, while «Video
+   * quality» asks where it goes. */
+  videoStarted: () => invoke<StartedView | null>("video_started"),
+  onVideoStarted: (handler: (id: number) => void): Promise<UnlistenFn> => listen<number>("video-started", (e) => handler(e.payload)),
+  videoKeep: (id: number, folder: string, name: string) => invoke<void>("video_keep", { id, folder, name }),
+  videoDiscard: (id: number) => invoke<void>("video_discard", { id }),
+  videoLater: (id: number, folder: string, name: string) => invoke<void>("video_later", { id, folder, name }),
   onVideoToolsProgress: (handler: (p: { tool: string; done: number; total: number | null }) => void): Promise<UnlistenFn> =>
     listen<{ tool: string; done: number; total: number | null }>("video-tools-progress", (e) => handler(e.payload)),
   onVideoProgress: (handler: (p: { id: number; done: number; total: number | null; speed: number | null }) => void): Promise<UnlistenFn> =>

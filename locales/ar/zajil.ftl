@@ -583,7 +583,7 @@ win-close = إغلاق
 tray-still-running = زاجِل ما زال يعمل في شريط النظام، والتحميلات تكمل. اختر «إنهاء زاجِل» من أيقونته لإنهائه.
 settings-closing = إغلاق النافذة
 settings-closing-label = إغلاق النافذة يُنهي زاجِل
-settings-closing-hint = دون هذا الخيار تختفي النافذة ويبقى زاجِل في شريط النظام والتحميلات تكمل، كما في IDM.
+settings-closing-hint = دون هذا الخيار تختفي النافذة ويبقى زاجِل في شريط النظام والتحميلات تكمل.
 settings-closing-no-tray = لا يظهر شريط النظام في سطح المكتب هذا، فإغلاق النافذة يُنهي زاجِل دائمًا (ويسأل أولًا إن كانت هناك تحميلات تعمل).
 
 ## M5.5: the progress window (design window 4)
@@ -632,7 +632,7 @@ add-save-as = احفظ باسم
 add-choose-folder = اختر مجلدًا
 last-try-yesterday = أمس { $time }
 
-## The toolbar as the user leaves it (M5.5, an IDM touch)
+## The toolbar as the user leaves it (M5.5)
 tb-big = أزرار كبيرة
 tb-small = أزرار صغيرة
 tb-customize = تخصيص شريط الأدوات…
@@ -642,14 +642,14 @@ tb-later = أخّر «{ $name }»
 tb-reset = كما كان
 tb-done = تم
 
-## The drop box (M5.5, an IDM touch)
+## The drop box (M5.5)
 drop-box = سلة الإسقاط
 drop-hint = اسحب رابطًا هنا لتحميله. وبكليك يمين: تحميل بالجملة، أو إخفاؤها.
 tray-drop-box = إظهار سلة الإسقاط
 settings-drop-box-label = إظهار سلة الإسقاط فوق كل النوافذ
 settings-drop-box-hint = مربع صغير بشعار زاجِل، تسحب عليه رابطًا من المتصفح فيفتح «معلومات ملف التحميل». تحرّكه بسحبه، وبكليك يمين عليه: تحميل بالجملة، أو إخفاؤه.
 
-## The table's queue column, «Remove from queue», and deleting what has not finished (M5.5, IDM touches)
+## The table's queue column, «Remove from queue», and deleting what has not finished (M5.5)
 col-queue = الطابور
 cmd-remove-from-queue = إزالة من الطابور
 delete-unfinished =
@@ -715,6 +715,8 @@ video-error-challenge = لم يستطع زاجِل أن يجتاز تحقّق ي
 video-error-other = تعذّر تحميل هذا الفيديو.
 video-error-other-details = تعذّر تحميل هذا الفيديو. التفاصيل: { $details }
 video-error-details = التفاصيل
+video-started-reading = يقرأ زاجِل الفيديو…
+video-size = الحجم
 
 ## Video downloads in the list (M6, #149)
 queue-video = فيديو
@@ -736,24 +738,24 @@ about-or-later = { $license } أو أحدث
 about-not-ours = زاجِل لا يملك هذه الأدوات، وهي لأصحابها:
 tool-license-yt-dlp = { $binary } للملف الذي ينزّله زاجِل (والكود المصدري بترخيص { $source })
 
-## Sounds (M5.5, an IDM touch)
+## Sounds (M5.5)
 settings-sounds = الأصوات
 settings-sound-done = صوت عند اكتمال تحميل
 settings-sound-failed = صوت عند فشل تحميل
 settings-sound-queue = صوت عند انتهاء طابور
 settings-sound-try = جرّب الصوت
 
-## How a new download shows (M5.5, IDM touches)
+## How a new download shows (M5.5)
 settings-new-download = التحميل الجديد
 settings-progress-window = نافذة التقدم حين يبدأ تحميل من «معلومات ملف التحميل»:
 settings-progress-shown = تظهر
 settings-progress-minimized = تظهر مصغّرة
 settings-progress-hidden = لا تظهر
 settings-start-while-open = ابدأ التحميل والنافذة مفتوحة
-settings-start-while-open-hint = يبدأ التحميل في الخلفية بمجرد أن يرد السيرفر، وأنت ما زلت في «معلومات ملف التحميل». و«إلغاء» يحذفه ويحذف ملفه الناقص.
+settings-start-while-open-hint = يبدأ التحميل في الخلفية بمجرد أن يرد السيرفر، وأنت ما زلت في «معلومات ملف التحميل». «ابدأ التحميل» ينقله إلى المجلد والاسم اللذين اخترتهما، و«إلغاء» يحذفه ويحذف ملفه الناقص.
 settings-browser-at-once = ابدأ تحميلات المتصفح على طول من غير سؤال
 settings-browser-at-once-hint = يبدأ التحميل القادم من المتصفح دون «معلومات ملف التحميل». أما البرامج (مثل exe) فتسأل أولًا دائمًا.
-add-started-note = بدأ التحميل في الخلفية، فاسمه ومجلده لم يعودا يتغيّران. الفئة والوصف يتغيّران.
+add-started-note = بدأ التحميل في الخلفية. غيّر الاسم أو المجلد كما تريد، وسينتقل الملف إليه حين تضغط «ابدأ التحميل».
 
 ## Batch download (M7)
 cmd-batch = تحميل بالجملة…
@@ -856,3 +858,28 @@ grab-error-max_files = عدد الملفات من { $min } إلى { $max }.
 grab-error-max_total = الحجم لا يكون صفرًا.
 grab-error-types = اختر نوعًا واحدًا على الأقل، أو اكتب امتدادًا.
 grab-error-site = «{ $site }» ليس اسم موقع: اكتب الاسم وحده، مثل { $example }.
+
+## The settings window's sections (a window of its own, its sections at its side).
+settings-section-general = عام
+settings-section-types = أنواع الملفات
+settings-section-saveto = الحفظ في
+settings-section-downloads = التحميلات
+settings-section-connection = الاتصال
+settings-section-proxy = البروكسي
+settings-section-logins = تسجيل الدخول للمواقع
+settings-section-sounds = الأصوات
+settings-section-speed = محدد السرعة
+settings-section-appearance = المظهر
+settings-double-click = النقر المزدوج على تحميل مكتمل
+settings-double-click-open = يفتح الملف
+settings-double-click-folder = يفتح المجلد الذي فيه الملف
+settings-double-click-details = يعرض تفاصيل التحميل
+settings-double-click-hint = التحميل الذي لم يكتمل يعرض نافذة تقدّمه دائمًا.
+settings-proxy = البروكسي
+settings-proxy-none = بدون بروكسي
+settings-proxy-use = استخدم هذا البروكسي
+settings-proxy-save = احفظ
+settings-proxy-saved = حُفظ. يُطبَّق عند تشغيل زاجِل في المرة القادمة.
+settings-proxy-hint = اكتبه هكذا: http://العنوان:المنفذ. تمر به كل التحميلات، ويبقى التحقق من شهادات المواقع كما هو. لا يُقبل اسم مستخدم أو كلمة مرور فيه.
+settings-logins-hint = يستخدم زاجِل تسجيل دخولك في المتصفح (الكوكيز) لكل تحميل يصله من الإضافة، ولا يحفظ كلمات مرور. إن لم يصل تحميل من موقع مسجّل فيه، فأصلح ربط المتصفح من هنا.
+settings-types-hint = الفئات تحدد نوع كل ملف من امتداده أو موقعه، ومجلدًا لكل نوع. عدّلها من محرر الفئات.

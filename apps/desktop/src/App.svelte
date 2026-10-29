@@ -14,6 +14,7 @@
   import ContextMenu from "./lib/components/ContextMenu.svelte";
   import DeleteAsk from "./lib/components/DeleteAsk.svelte";
   import Settings from "./lib/components/Settings.svelte";
+  import { loadDoubleClick } from "./lib/doubleClick";
   import Categories from "./lib/components/Categories.svelte";
   import DownloadTable from "./lib/components/DownloadTable.svelte";
   import AddDialog from "./lib/components/AddDialog.svelte";
@@ -28,6 +29,7 @@
   import RefreshDialog from "./lib/components/RefreshDialog.svelte";
   import { asRefreshProblem, refreshText } from "./lib/refresh";
   import Icon from "./lib/components/Icon.svelte";
+  import ColorIcon from "./lib/components/ColorIcon.svelte";
   import { toolLines } from "./lib/about";
   import { api } from "./lib/api";
   import { finishedQueues, play, type Sound } from "./lib/sounds";
@@ -432,9 +434,10 @@
       case "halt-queue":
         void act("pause", idsOf((d) => d.queue === queueShown && (d.status === "active" || d.status === "waiting")));
         break;
+      // A window of its own (the owner's request), with its sections at
+      // its side.
       case "settings":
-        details = null;
-        view = "settings";
+        void api.openSettings(locale.t("settings-title")).catch((e) => (failed = String(e)));
         break;
       // The schedule window (M5.5), a window of its own.
       case "schedule":
@@ -563,11 +566,14 @@
     }
   }
 
-  /** A finished download opens; one still on its way shows its progress. */
+  /** A finished download opens (or its folder, or its details, as the
+   * settings say); one still on its way shows its progress. */
   async function openOne(id: number) {
     const d = snapshot.downloads.find((x) => x.id === id);
-    if (d?.status === "done") await showIn(id, false);
-    else await showProgress(id);
+    if (d?.status !== "done") return showProgress(id);
+    const choice = loadDoubleClick();
+    if (choice === "details") await open(id);
+    else await showIn(id, choice === "folder");
   }
   /** The download's progress window (M5.5). */
   async function showProgress(id: number) {
@@ -883,15 +889,17 @@
     let unlistenClipboard: (() => void) | undefined;
     let unlistenMenu: (() => void) | undefined;
     let unlistenView: (() => void) | undefined;
+    let unlistenSettings: (() => void) | undefined;
     void (async () => {
       if (await runUiTest()) return;
-      try {
-        applySettings(await api.settings());
-      } catch (e) {
+      // The settings, the list and the listeners together: each is a call
+      // to Rust, and waiting for each in turn slowed the start.
+      const settings = api.settings().then(applySettings, (e) => {
         settingsProblem = String(e);
-      }
+      });
       // Listening first, so a change during the first snapshot is not lost.
       unlisten = await api.onChange(() => void refresh());
+      const first = refresh();
       // A copied download link waits in the paste bar, and the window
       // shows; nothing asks the server before the user presses "Download"
       // (review of #67). Ignored while a dialog is open: with the refresh
@@ -907,13 +915,18 @@
         view = "categories";
       });
       unlistenMenu = await api.onMenuCommand((command) => fromMenu(command as Command));
-      await refresh();
+      // Changed in the settings window: the language and theme follow.
+      unlistenSettings = await api.onSettingsChanged(applySettings);
+      await Promise.all([settings, first]);
+      // The list is drawn (timed with `ZAJIL_MEASURE=1`).
+      void api.windowPainted().catch(() => {});
     })();
     return () => {
       unlisten?.();
       unlistenClipboard?.();
       unlistenMenu?.();
       unlistenView?.();
+      unlistenSettings?.();
     };
   });
 </script>
@@ -1040,10 +1053,10 @@
     </div>
     <footer class="status">
       <span>{locale.t("downloads-count", { count: snapshot.downloads.length })}</span>
-      <span>{locale.t("footer-active", { count: active.length })}</span>
+      <span><ColorIcon name="s-active" size={13} />{locale.t("footer-active", { count: active.length })}</span>
       <span>{locale.t("footer-total-speed", { speed: speed(locale.lang, locale.digits, totalSpeed) || size(locale.lang, locale.digits, 0) })}</span>
-      <span>{snapshot.speed_limit ? locale.t("footer-limit", { speed: speed(locale.lang, locale.digits, snapshot.speed_limit) }) : locale.t("footer-limit-none")}</span>
-      <span>{locale.t("footer-waiting", { count: waiting })}</span>
+      <span><Icon name="gauge" size={14} />{snapshot.speed_limit ? locale.t("footer-limit", { speed: speed(locale.lang, locale.digits, snapshot.speed_limit) }) : locale.t("footer-limit-none")}</span>
+      <span><ColorIcon name="s-waiting" size={13} />{locale.t("footer-waiting", { count: waiting })}</span>
       {#if selected.length > 0}<span class="end">{locale.t("footer-selected", { number: num(locale.lang, locale.digits, selected.length, 0) })}</span>{/if}
     </footer>
     <div class="visually-hidden" aria-live="polite" role="status">{announcement}</div>
@@ -1089,15 +1102,24 @@
     background: var(--red-bg);
     color: var(--red);
   }
+  /* A desktop status bar: its parts in panels with lines between. */
   .status {
     display: flex;
-    gap: 18px;
     align-items: center;
-    padding: 5px 14px;
+    padding: 3px 6px;
     border-top: 1px solid var(--line);
     font-size: 12px;
     color: var(--muted);
-    background: var(--surface);
+    background: linear-gradient(var(--sunken), var(--surface));
+  }
+  .status > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 10px;
+  }
+  .status > span + span {
+    border-inline-start: 1px solid var(--line);
   }
   .end {
     margin-inline-start: auto;

@@ -9,12 +9,14 @@
 #![forbid(unsafe_code)]
 
 mod addprefs;
+mod background;
 mod batch;
 mod closing;
 mod complete;
 mod dropbox;
 mod grab;
 mod live;
+mod measure;
 mod menu;
 mod offers;
 mod removal;
@@ -138,6 +140,7 @@ fn start_line(process: u32) -> String {
 }
 
 pub fn run() {
+    measure::start();
     // Said at once, as each stage of the start below (#220: a start whose
     // window never came said nothing at all).
     eprintln!("{}", start_line(std::process::id()));
@@ -162,10 +165,18 @@ pub fn run() {
         .as_ref()
         .map(zajil_core::sites::SiteLimits::from_settings)
         .unwrap_or_default();
+    // The user's proxy, read at the start (a change applies at the next).
+    let proxy = loaded.as_ref().ok().and_then(|s| s.proxy.clone());
     let app = App {
-        engine: Engine::new(Options::default())
-            .expect("the engine starts")
-            .with_site_limits(sites),
+        engine: Engine::new(Options {
+            proxy: proxy.clone(),
+            ..Options::default()
+        })
+        // A proxy the engine cannot use: straight to the servers, as
+        // before it was set (the settings say it).
+        .or_else(|_| Engine::new(Options::default()))
+        .expect("the engine starts")
+        .with_site_limits(sites),
         store: QueueStore::new(&data),
         categories: CategoryStore::new(&data),
         settings,
@@ -222,6 +233,8 @@ pub fn run() {
         ))
         .manage(app)
         .manage(windows::Shared::default())
+        .manage(windows::Pool::default())
+        .manage(background::Held::default())
         .manage(offers::Offers::default())
         .manage(video::VideoState::default())
         .manage(batch::Pending::default())
@@ -314,6 +327,7 @@ pub fn run() {
             // The close button hides the window into the tray (`closing.rs`).
             closing::watch(tauri_app.handle());
             tauri_app.add_capability(windows::PROGRESS_CAPABILITY)?;
+            tauri_app.add_capability(windows::SETTINGS_CAPABILITY)?;
             windows::close_with_main(tauri_app.handle());
             // The schedule window's and the «download complete» windows'
             // (`schedule.rs`, `complete.rs`); they close with the main one too.
@@ -387,6 +401,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
     tauri::generate_handler![
         snapshot,
         probe,
+        guess_info,
         cancel_probe,
         add,
         pause,
@@ -405,6 +420,10 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         addprefs::open_started_progress,
         set_item_details,
         video::video_pending,
+        video::video_started,
+        video::video_keep,
+        video::video_discard,
+        video::video_later,
         video::open_video,
         batch::open_batch,
         batch::batch_pending,
@@ -447,13 +466,21 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         windows::open_add_link,
         windows::pending_link,
         windows::open_add_info,
+        background::hold_started,
+        background::place_started,
         windows::pending_info,
+        windows::window_role,
+        measure::window_painted,
+        windows::window_ready,
         windows::fit_window,
         offers::offer_answer,
         offers::add_offer,
         windows::close_window,
         windows::show_main_view,
         windows::open_progress,
+        windows::open_settings,
+        proxy_setting,
+        set_proxy,
         set_limit,
         menu::set_menu,
         quit_app,
@@ -486,6 +513,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
     tauri::generate_handler![
         snapshot,
         probe,
+        guess_info,
         cancel_probe,
         add,
         pause,
@@ -504,6 +532,10 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         addprefs::open_started_progress,
         set_item_details,
         video::video_pending,
+        video::video_started,
+        video::video_keep,
+        video::video_discard,
+        video::video_later,
         video::open_video,
         batch::open_batch,
         batch::batch_pending,
@@ -546,13 +578,21 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         windows::open_add_link,
         windows::pending_link,
         windows::open_add_info,
+        background::hold_started,
+        background::place_started,
         windows::pending_info,
+        windows::window_role,
+        measure::window_painted,
+        windows::window_ready,
         windows::fit_window,
         offers::offer_answer,
         offers::add_offer,
         windows::close_window,
         windows::show_main_view,
         windows::open_progress,
+        windows::open_settings,
+        proxy_setting,
+        set_proxy,
         set_limit,
         menu::set_menu,
         quit_app,
@@ -820,6 +860,7 @@ async fn run_queues(handle: tauri::AppHandle) {
                 };
                 on_queue_event(&event, &live, &links, &asks, &from_browser, &store, changed);
                 schedule::on_event(&handle, &event);
+                background::on_event(&handle, &event);
                 complete::on_event(&handle, &event);
                 notify(&handle, &live);
             })
@@ -885,6 +926,11 @@ async fn snapshot<R: tauri::Runtime>(
         // The page is up and talking to the program (the open-and-close
         // check of CI waits for this line).
         eprintln!("zajil: the window is ready");
+        // The windows the user waits for are made now, hidden.
+        windows::warm(&handle);
+        if measure::on() || measure::show().is_some() {
+            measure::drive(&handle);
+        }
     }
     #[cfg(feature = "ui-test")]
     if let Some(snapshot) = handle.state::<ui_test::UiTest>().demo() {
@@ -905,6 +951,13 @@ async fn snapshot<R: tauri::Runtime>(
         &handle.state::<video::VideoState>(),
         &categories,
     ));
+    // A download an info window or «Video quality» still asks about is not
+    // in the list before «Start download» (as IDM: it runs unseen).
+    let held = handle.state::<background::Held>();
+    let asked = video::asked(&handle.state::<video::VideoState>());
+    snapshot
+        .downloads
+        .retain(|d| !held.holds(d.id) && Some(d.id) != asked);
     Ok(snapshot)
 }
 
@@ -937,6 +990,41 @@ async fn probe(app: State<'_, App>, url: String) -> Result<ProbeView, String> {
     })
     .await
     .map_err(blocking_err)
+}
+
+/// What «Download file info» shows before the server answers: the name the
+/// link's address gives, its category by that name and the site, and the
+/// folder it would go to, with no size. The window is drawn whole from its
+/// first frame, and the server's answer only fills it in (the owner's
+/// notes: it opened small and grew once the server answered).
+#[tauri::command]
+async fn guess_info(app: State<'_, App>, url: String) -> Result<ProbeView, String> {
+    let found = guessed(&url)?;
+    let (categories, settings, system) = (
+        app.categories.clone(),
+        app.settings.clone(),
+        app.system_download_dir.clone(),
+    );
+    tokio::task::spawn_blocking(move || {
+        let categories = categories.load().unwrap_or_else(|_| no_categories());
+        let given = download_dir(&settings, &system);
+        view::probe(&found, &categories, &given)
+    })
+    .await
+    .map_err(blocking_err)
+}
+
+/// What `url` says of its file by itself ([`guess_info`]).
+fn guessed(url: &str) -> Result<zajil_core::Probe, String> {
+    let parsed = zajil_core::Url::parse(url.trim()).map_err(|e| e.to_string())?;
+    Ok(zajil_core::Probe {
+        name: zajil_core::naming::suggested_name(None, &parsed),
+        size: None,
+        resumable: false,
+        ranges: false,
+        host: parsed.host_str().map(str::to_owned),
+        content_type: None,
+    })
 }
 
 /// Gives up the add dialog's probe (the dialog was closed).
@@ -1037,15 +1125,30 @@ fn serve_extension<R: tauri::Runtime>(handle: tauri::AppHandle<R>, data: PathBuf
                     media,
                     cookies,
                     private,
+                    format,
+                    audio,
+                    label,
+                    size,
                     ..
                 } = &request
                 {
+                    // A format chosen in the button's list: downloaded at
+                    // once, without «Video quality» (owner, 2026-10-29).
+                    let chosen = format.clone().map(|id| video::Chosen {
+                        choice: match audio.clone() {
+                            Some(audio) => video::ChoiceView::Merge { video: id, audio },
+                            None => video::ChoiceView::Format { id },
+                        },
+                        label: label.clone(),
+                        size: *size,
+                    });
                     video::receive(
                         &handle,
                         page.clone(),
                         media.clone(),
                         cookies.clone(),
                         *private,
+                        chosen,
                     );
                     return zajil_host::Response::ok();
                 }
@@ -1896,6 +1999,7 @@ fn from_extension_with(
                 folder: None,
                 start: !runs_code,
                 limit: None,
+                connections: None,
             };
             match add_from_page(store, &page, &add, given, headers, runs_code, false) {
                 Ok(_) => zajil_host::Response::ok(),
@@ -2092,6 +2196,9 @@ fn add_blocking(
         if description.is_some() {
             queues.set_description(id, description)?;
         }
+        if let Some(n) = request.connections {
+            queues.set_connections(id, Some(n))?;
+        }
         let item = queues.item_mut(id).expect("just added");
         // Without a folder of its own, a download goes by its category.
         item.categorize = request.folder.is_none();
@@ -2112,20 +2219,65 @@ fn add_blocking(
 /// What the page shows, read from the files. Blocking. A damaged categories
 /// file is said, not fatal: the downloads still show (review of #45: the
 /// whole list went blank while they ran).
+/// A file as it is on disk now: where, its size, and when it was made and
+/// last written (each change replaces the file, ADR-0004).
+type Stamp = (
+    PathBuf,
+    u64,
+    Option<std::time::SystemTime>,
+    Option<std::time::SystemTime>,
+);
+
+fn stamp(path: &Path) -> Option<Stamp> {
+    let meta = path.symlink_metadata().ok()?;
+    Some((
+        path.to_path_buf(),
+        meta.len(),
+        meta.created().ok(),
+        meta.modified().ok(),
+    ))
+}
+
+/// `load`'s answer, read again only when the file at `path` changed: while
+/// downloads run, the list asks four times a second, and their progress
+/// is in memory, not in the files (the owner's request: a faster list).
+fn cached<T: Clone, E>(
+    cell: &std::sync::Mutex<Option<(Stamp, T)>>,
+    path: &Path,
+    load: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    let now = stamp(path);
+    if let Some(now) = &now
+        && let Some((was, value)) = &*cell.lock().unwrap_or_else(|e| e.into_inner())
+        && was == now
+    {
+        return Ok(value.clone());
+    }
+    let value = load()?;
+    // Stamped before the read: a change during it is read next time.
+    *cell.lock().unwrap_or_else(|e| e.into_inner()) = now.map(|now| (now, value.clone()));
+    Ok(value)
+}
+
+static QUEUES_READ: std::sync::Mutex<Option<(Stamp, QueuesFile)>> = std::sync::Mutex::new(None);
+static CATEGORIES_READ: std::sync::Mutex<Option<(Stamp, CategoriesFile)>> =
+    std::sync::Mutex::new(None);
+
 fn read_snapshot(
     store: &QueueStore,
     categories: &CategoryStore,
     live: &Live,
 ) -> Result<Snapshot, String> {
-    let queues = store.load().map_err(blocking_err)?;
-    let (categories, problem) = match categories.load() {
-        Ok(c) => (c, None),
-        Err(err) => {
-            let mut none = CategoriesFile::built_in();
-            none.categories.clear();
-            (none, Some(err.to_string()))
-        }
-    };
+    let queues = cached(&QUEUES_READ, &store.path(), || store.load()).map_err(blocking_err)?;
+    let (categories, problem) =
+        match cached(&CATEGORIES_READ, &categories.path(), || categories.load()) {
+            Ok(c) => (c, None),
+            Err(err) => {
+                let mut none = CategoriesFile::built_in();
+                none.categories.clear();
+                (none, Some(err.to_string()))
+            }
+        };
     let mut snapshot = view::snapshot(&queues, &categories, live);
     snapshot.categories_problem = problem.clone();
     snapshot.problem = snapshot.problem.or(problem);
@@ -2635,6 +2787,29 @@ async fn remove<R: tauri::Runtime>(
 mod tests {
     use super::*;
 
+    /// «Download file info» draws its rows before the server answers with
+    /// what the address says: the file's name (decoded and made safe), its
+    /// site for the categories, and no size.
+    #[test]
+    fn the_info_window_guesses_from_the_address() {
+        let found =
+            guessed(" https://files.example.com/a/%D9%85%D9%84%D9%81%20v2.zip?x=1 ").unwrap();
+        assert_eq!(found.name, "ملف v2.zip");
+        assert_eq!(found.host.as_deref(), Some("files.example.com"));
+        assert_eq!(
+            (found.size, found.resumable, found.is_page()),
+            (None, false, false)
+        );
+        assert_eq!(guessed("https://example.com/").unwrap().name, "download");
+        assert_eq!(
+            guessed("https://example.com/../../etc/passwd")
+                .unwrap()
+                .name,
+            "passwd"
+        );
+        assert!(guessed("not a link").is_err());
+    }
+
     /// #248: the start line said 0.0.0, this crate's version, whatever the
     /// installer's was.
     #[test]
@@ -2670,6 +2845,7 @@ mod tests {
             folder: None,
             start: false,
             limit: None,
+            connections: None,
         };
         let id = add_blocking(
             &store,
@@ -4605,7 +4781,39 @@ async fn save_settings<R: tauri::Runtime>(
     .await
     .map_err(blocking_err)??;
     let _ = handle.emit("downloads-changed", ());
+    // The other windows follow (the main one and the settings window).
+    let _ = handle.emit("settings-changed", saved.clone());
     Ok(saved)
+}
+
+/// The proxy of the settings (`None`: none).
+#[tauri::command]
+async fn proxy_setting(app: State<'_, App>) -> Result<Option<String>, String> {
+    let settings = app.settings.clone();
+    tokio::task::spawn_blocking(move || settings.load().map(|s| s.proxy))
+        .await
+        .map_err(blocking_err)?
+        .map_err(blocking_err)
+}
+
+/// Sets the proxy (`None` or empty: none). It applies when Zajil next
+/// starts: every download then goes through it.
+#[tauri::command]
+async fn set_proxy(app: State<'_, App>, proxy: Option<String>) -> Result<(), String> {
+    let proxy = proxy.map(|p| p.trim().to_owned()).filter(|p| !p.is_empty());
+    if let Some(proxy) = &proxy {
+        zajil_core::settings::check_proxy(proxy)?;
+    }
+    let settings = app.settings.clone();
+    tokio::task::spawn_blocking(move || {
+        settings.update(|file| {
+            file.proxy = proxy;
+            Ok(())
+        })
+    })
+    .await
+    .map_err(blocking_err)?
+    .map_err(blocking_err)
 }
 
 /// Writes `change` into the settings file and gives its site limits to

@@ -30,6 +30,10 @@ use serde::Deserialize;
 use crate::engine::{Engine, Stop};
 use crate::tools::{Tool, Toolbox, VerifiedTool};
 
+#[path = "video_fast.rs"]
+mod fast;
+pub use fast::Saved;
+
 /// The tools of one run, checked right before it ([`Toolbox::verified`]),
 /// and kept until its whole tree has ended: on Windows they stay locked
 /// while yt-dlp may start ffmpeg or ffprobe (review of the video runner:
@@ -795,6 +799,9 @@ pub enum VideoEvent {
         total: Option<u64>,
         speed: Option<u64>,
     },
+    /// A part saved before could not be continued: it starts over, for
+    /// this reason (Zajil's own way, on YouTube).
+    StartedOver(String),
 }
 
 /// The folders of runs, `<data dir>/run`.
@@ -1151,7 +1158,9 @@ impl Overall {
     }
 
     fn of(&mut self, event: VideoEvent) -> VideoEvent {
-        let VideoEvent::Progress { done, total, speed } = event;
+        let VideoEvent::Progress { done, total, speed } = event else {
+            return event;
+        };
         if done < self.done {
             // Back to the start: the part before has ended.
             self.before += self.total.unwrap_or(0).max(self.done);
@@ -1598,6 +1607,16 @@ impl VideoRunner {
         // Checked before any check of the HLS playlists asks for them.
         let choice_args = choice.args()?;
         self.check_hls(request, stop).await?;
+        // YouTube: Zajil's own engine, when the probe's links allow it.
+        if let Some(parts) = fast::parts(choice, request.formats) {
+            let parts: Vec<fast::Part> = parts.into_iter().map(fast::Part::of).collect();
+            match self.fast_download(request, &parts, stop, on_event).await {
+                Ok(file) => return Ok(file),
+                Err(fast::Failed::Partway(e)) => return Err(e),
+                // Nothing came: yt-dlp tries.
+                Err(fast::Failed::Untouched) => {}
+            }
+        }
         let mut args = base_args();
         args.extend([
             Arg::NoPlaylist,
@@ -1870,7 +1889,9 @@ impl Finish {
         };
         let wanted = crate::sanitize::sanitize_file_name(&format!("{base}.{ext}"));
         // A file system that cannot keep the mark keeps the file without it.
-        let _ = zajil_platform::origin::mark(file, &self.origin);
+        if !self.origin.is_empty() {
+            let _ = zajil_platform::origin::mark(file, &self.origin);
+        }
         for candidate in crate::naming::candidates(&wanted) {
             let target =
                 crate::sanitize::confine(&self.dest, &candidate).map_err(io::Error::other)?;
@@ -1889,6 +1910,52 @@ impl Finish {
         }
         Err(io::Error::other(format!("no free name for {wanted}")))
     }
+}
+
+/// Moves a finished video `file` into `folder` as `<name>.<its extension>`,
+/// numbered if that is taken, never over another file: the user changed
+/// where it goes while it downloaded. Another disk: copied, then removed.
+/// Blocking.
+pub fn move_video(file: &Path, folder: &Path, name: &str) -> io::Result<PathBuf> {
+    let finish = |dest: &Path| Finish {
+        dest: dest.to_owned(),
+        name: name.to_owned(),
+        origin: String::new(),
+    };
+    match finish(folder).place(file) {
+        Err(err) if err.kind() == io::ErrorKind::CrossesDevices => {
+            let ext = file.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
+            let copy = folder.join(format!(".{}.zajil-move.{ext}", random_hex()?));
+            let mut to = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&copy)?;
+            let copied = zajil_platform::fs::open_regular_nofollow(file, false)
+                .and_then(|mut from| io::copy(&mut from, &mut to))
+                .and_then(|_| to.sync_all());
+            drop(to);
+            if let Err(err) = copied {
+                let _ = zajil_platform::fs::remove_file_retrying(&copy);
+                return Err(err);
+            }
+            let placed = finish(folder).place(&copy);
+            match &placed {
+                Ok(_) => zajil_platform::fs::remove_file_retrying(file)?,
+                Err(_) => {
+                    let _ = zajil_platform::fs::remove_file_retrying(&copy);
+                }
+            }
+            placed
+        }
+        placed => placed,
+    }
+}
+
+/// The part and state files a stopped YouTube download named `name` left
+/// in `dest` (Zajil's own way, `<name>.f<id>.<ext>`), to remove them when
+/// the user cancels it. Blocking.
+pub fn part_files(dest: &Path, name: &str) -> Vec<PathBuf> {
+    fast::part_files(dest, name)
 }
 
 /// `name` without a video or sound extension at its end: the file gets

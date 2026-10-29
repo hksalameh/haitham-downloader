@@ -1,5 +1,6 @@
 <script lang="ts">
   import { lucide } from "../lucide";
+  import ColorIcon from "./ColorIcon.svelte";
 
   // Simple line icons drawn for Zajil (not taken from any other program),
   // and Lucide's (M5.5, `../lucide.ts`, ISC) by their Lucide names.
@@ -24,9 +25,57 @@
     back: '<path d="M14.5 6l-6 6 6 6"/>',
     gauge: '<path d="M4.5 16a7.5 7.5 0 1 1 15 0"/><path d="M12 16l3.5-4.5"/>',
     open: '<path d="M14 4.5h5.5V10M19.5 4.5L12 12M10 5.5H4.5v14h14V14"/>',
+    globe:
+      '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.7 5.4 3.7 8.5s-1.2 5.9-3.7 8.5M12 3.5c-2.5 2.6-3.7 5.4-3.7 8.5s1.2 5.9 3.7 8.5"/>',
+    key: '<circle cx="8" cy="15" r="3.5"/><path d="M10.5 12.5L19 4M16 7l2.5 2.5M14 9l2 2"/>',
+    sound: '<path d="M4.5 9.5h3.5l4.5-4v13l-4.5-4H4.5z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/>',
+    sun: '<circle cx="12" cy="12" r="3.5"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6L18 18M6 18l1.4-1.4M16.6 7.4L18 6"/>',
   };
   let { name, size = 18, stroke = 1.8 }: { name: string; size?: number; stroke?: number } = $props();
+
+  // The pictures are drawn in Zajil's coloured set (`ColorIcon`, the
+  // owner's request: no thin outline icons left); the controls (arrows,
+  // chevrons, close, search, the window's buttons) and the glyphs on a
+  // button's own colour stay lines.
+  const COLOURED: Record<string, string> = {
+    alert: "s-failed",
+    "circle-alert": "s-failed",
+    info: "c-info",
+    play: "resume",
+    pause: "pause",
+    "octagon-pause": "pause-all",
+    trash: "delete",
+    "trash-2": "delete",
+    "list-x": "c-remove-queue",
+    plus: "add",
+    "circle-plus": "add",
+    folder: "all",
+    "folder-open": "all",
+    tag: "c-tag",
+    link: "c-link",
+    "link-2": "c-link",
+    clock: "schedule",
+    "calendar-clock": "schedule",
+    queue: "queue",
+    "list-ordered": "queue",
+    "list-start": "run-queue",
+    "list-end": "halt-queue",
+    file: "t-file",
+    film: "c-film",
+    gauge: "c-gauge",
+    key: "c-key",
+    globe: "c-globe",
+    sound: "c-sound",
+    sun: "c-sun",
+    sliders: "settings",
+    settings: "settings",
+  };
+  const coloured = $derived(COLOURED[name] ?? (/^[cst]-/.test(name) ? name : null));
 </script>
+
+{#if coloured}
+  <ColorIcon name={coloured} {size} />
+{:else}
 
 <svg
   class="icon"
@@ -42,6 +91,7 @@
 >
   {@html paths[name] ?? lucide[name] ?? ""}
 </svg>
+{/if}
 
 <style>
   .icon {
