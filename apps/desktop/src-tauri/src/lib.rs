@@ -333,6 +333,18 @@ pub fn run() {
             // A video tool the user had in an earlier build (yt-dlp's
             // one-file build) is brought up to date in the background.
             video::update_tools(tauri_app.handle().clone());
+            // Videos in queues follow their queues' windows, and the last
+            // of a queue brings what the user chose for after it.
+            video::watch_queues(tauri_app.handle().clone());
+            {
+                use tauri::Listener;
+                let handle = tauri_app.handle().clone();
+                tauri_app.listen_any(video::QUEUE_VIDEO_DONE, move |event| {
+                    if let Ok(queue) = serde_json::from_str::<String>(event.payload()) {
+                        schedule::video_done(&handle, queue);
+                    }
+                });
+            }
             tauri_app.add_capability(dropbox::CAPABILITY)?;
             // The drop box, if the user left it shown.
             if tauri_app.state::<closing::Closing>().prefs().drop_box {
@@ -454,6 +466,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         video::video_tools_install,
         video::video_tools_cancel,
         video::video_tools_remove,
+        video::video_set_queue,
         video::video_probe,
         video::video_probe_cancel,
         video::video_window_open,
@@ -497,6 +510,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         set_proxy,
         videos_at_once_setting,
         set_videos_at_once,
+        finish_setting,
+        set_finish_setting,
         set_limit,
         menu::set_menu,
         quit_app,
@@ -568,6 +583,7 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         video::video_tools_install,
         video::video_tools_cancel,
         video::video_tools_remove,
+        video::video_set_queue,
         video::video_probe,
         video::video_probe_cancel,
         video::video_window_open,
@@ -611,6 +627,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         set_proxy,
         videos_at_once_setting,
         set_videos_at_once,
+        finish_setting,
+        set_finish_setting,
         set_limit,
         menu::set_menu,
         quit_app,
@@ -1690,6 +1708,9 @@ fn browser_name(browser: Browser) -> &'static str {
         Browser::Chrome => "chrome",
         Browser::Chromium => "chromium",
         Browser::Edge => "edge",
+        Browser::Brave => "brave",
+        Browser::Opera => "opera",
+        Browser::Vivaldi => "vivaldi",
         Browser::Firefox => "firefox",
     }
 }
@@ -2672,6 +2693,14 @@ async fn move_to_queue<R: tauri::Runtime>(
     queue: String,
     handle: tauri::AppHandle<R>,
 ) -> Result<(), String> {
+    // Videos join a queue as well (owner's request, 2026-10-30).
+    let (videos, ids) = video::split(ids);
+    if !videos.is_empty() {
+        video::set_queue(&handle, &videos, Some(queue.clone()));
+    }
+    if ids.is_empty() {
+        return Ok(());
+    }
     change(&app, &handle, move |q| move_items(q, &ids, &queue)).await
 }
 
@@ -3037,7 +3066,7 @@ mod tests {
         });
         let integration = register_all(&registrar, &host);
         assert_eq!(integration.host_problem, None);
-        assert_eq!(integration.browsers.len(), 4);
+        assert_eq!(integration.browsers.len(), Browser::ALL.len());
         for (browser, view) in Browser::ALL.iter().zip(&integration.browsers) {
             assert_eq!(view.error, None, "{browser:?}");
             assert!(registrar.is_registered(*browser).unwrap());
@@ -4801,6 +4830,48 @@ async fn save_settings<R: tauri::Runtime>(
     // The other windows follow (the main one and the settings window).
     let _ = handle.emit("settings-changed", saved.clone());
     Ok(saved)
+}
+
+/// What a progress window does when its download finishes, for every
+/// download (owner's request, 2026-10-30).
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export)]
+pub struct FinishView {
+    pub close_window: bool,
+    pub open_file: bool,
+    pub open_folder: bool,
+}
+
+#[tauri::command]
+async fn finish_setting(app: State<'_, App>) -> Result<FinishView, String> {
+    let settings = app.settings.clone();
+    let finish = tokio::task::spawn_blocking(move || settings.load().map(|s| s.finish()))
+        .await
+        .map_err(blocking_err)?
+        .map_err(blocking_err)?;
+    Ok(FinishView {
+        close_window: finish.close_window,
+        open_file: finish.open_file,
+        open_folder: finish.open_folder,
+    })
+}
+
+#[tauri::command]
+async fn set_finish_setting(app: State<'_, App>, finish: FinishView) -> Result<(), String> {
+    let settings = app.settings.clone();
+    tokio::task::spawn_blocking(move || {
+        settings.update(|file| {
+            file.finish = Some(zajil_core::settings::FinishActions {
+                close_window: finish.close_window,
+                open_file: finish.open_file,
+                open_folder: finish.open_folder,
+            });
+            Ok(())
+        })
+    })
+    .await
+    .map_err(blocking_err)?
+    .map_err(blocking_err)
 }
 
 /// How many video downloads run at once.

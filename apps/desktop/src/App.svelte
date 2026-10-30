@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { newestFirst } from "./lib/order";
   import { onMount, tick } from "svelte";
   import { openError } from "./lib/openError";
   import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
@@ -98,7 +99,7 @@
   // site (Ctrl+F).
   const shown = $derived.by(() => {
     const words = search.trim().toLocaleLowerCase();
-    return snapshot.downloads.filter((d) => {
+    const found = snapshot.downloads.filter((d) => {
       const picked = (() => {
         switch (filter.kind) {
           case "all":
@@ -115,6 +116,9 @@
       })();
       return picked && (!words || d.name.toLocaleLowerCase().includes(words) || (d.host ?? "").toLocaleLowerCase().includes(words));
     });
+    // The newest first (owner's request, 2026-10-30); a queue keeps the
+    // order it runs in.
+    return filter.kind === "queue" ? found : newestFirst(found);
   });
   // The toolbar acts only on downloads the user sees: one filtered out or
   // gone is no longer selected (review of #46: Delete removed a hidden one).
@@ -497,7 +501,7 @@
         return tableShown && chosen.length > 0;
       // Back to the main queue: only what is in another one.
       case "remove-from-queue":
-        return tableShown && chosen.some((d) => !d.video && d.queue !== "main");
+        return tableShown && chosen.some((d) => (d.video ? d.queue !== "" : d.queue !== "main"));
       default:
         return true;
     }
@@ -549,7 +553,9 @@
       case "copy-link":
         return void copyLinks();
       case "remove-from-queue":
-        return void moveTo("main", chosen.filter((d) => !d.video && d.queue !== "main").map((d) => d.id));
+        // A video goes back to the videos' own list; the others to the main
+        // queue.
+        return void leaveQueues(chosen.filter((d) => (d.video ? d.queue !== "" : d.queue !== "main")));
       case "categories":
         details = null;
         view = "categories";
@@ -631,7 +637,20 @@
     }
   }
   // A video download has no queue (#149).
-  async function moveTo(queue: string, ids: number[] = chosen.filter((d) => !d.video).map((d) => d.id)) {
+  async function leaveQueues(list: Snapshot["downloads"]) {
+    failed = null;
+    try {
+      const videos = list.filter((d) => d.video).map((d) => d.id);
+      const others = list.filter((d) => !d.video).map((d) => d.id);
+      if (videos.length) await api.videoSetQueue(videos, null);
+      if (others.length) await api.moveToQueue(others, "main");
+    } catch (e) {
+      failed = String(e);
+    }
+    await refresh();
+  }
+  // Videos join a queue too (owner's request, 2026-10-30).
+  async function moveTo(queue: string, ids: number[] = chosen.map((d) => d.id)) {
     failed = null;
     try {
       await api.moveToQueue(ids, queue);

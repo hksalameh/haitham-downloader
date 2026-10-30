@@ -7,6 +7,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-10-30
+
+What the owner and users asked for after 1.1.2. Tried by hand on macOS by the owner; on Windows and Linux, checked by CI only.
+
+### Added
+
+- **When a download finishes, for every download** (owner's request, 2026-10-30): Settings › General has «When a download finishes»: close the download's window (on by default; it stayed open), open the folder, open the file (a program still asks first). Each window can still change it for its own download.
+- **Videos and playlists in queues** (owner's request, 2026-10-30): «Video quality» and a playlist have a queue choice, with «New queue…» (none by default: it starts now), and «Add to queue» and «Remove from queue» take videos too. A video in a queue starts only while its queue may run (no schedule, its window open, or started now), within the queue's downloads at once, goes back to waiting when its window closes, and the queue's «after it ends» (opening a file, sleep, shutdown) waits for its videos too.
+- **A download count** on the site's first page and as a badge in the README (owner's request, 2026-10-30): how many times the installers of every release were downloaded, as GitHub counts them, updated once a day by the site's deploy. Nothing is sent from Zajil itself.
+- **Brave, Opera and Vivaldi:** Zajil registers its browser host for them too (owner's request, 2026-10-30), and they take the Chrome extension. On macOS and Linux each has its own folder; on Windows Brave and Opera read Chrome's key, and Vivaldi has its own.
+
+### Changed
+
+- **The list is easier to read** (users' notes, 2026-10-30): rows with more room between them, a slightly larger font, and the tree likewise. **The newest download comes first** in every view but a queue's, which keeps the order it runs in.
+
+### Fixed
+
+- **A finished download showed «0 bytes» and «size unknown»** once its state file was gone (owner's report, 2026-10-30): it now shows its file's own size.
+- **On a Mac in Arabic the window's buttons covered the logo** (a user's report, 2026-10-30): macOS puts them on the right there, and the title bar left room on the left only. It now leaves room on both sides.
+- **«Resume: not possible» before a video's first byte:** it is now «unknown» until something has come.
+- **An Instagram video played as sound only in QuickTime** (owner's report, 2026-10-30): the best choice merged a higher VP9 picture, which QuickTime cannot play, rather than take the H.264 with its sound beside it. A higher picture is now merged only if it is H.264 too, or if the format with sound is not one every player opens; and a VP9 or AV1 picture is not merged at all beside the site's own MP4 file whose codecs it does not say (Facebook's, the same report). «Video quality» says each picture's codec (H.264, VP9, AV1, HEVC), and on macOS «Won't play in QuickTime» beside VP9 and AV1 (owner's decision, 2026-10-30).
+
 ## [1.1.2] - 2026-10-29
 
 Fixes for what the owner found while downloading a YouTube playlist. The cause of the video tools asked for again was found in Zajil's new log. Tried by hand on macOS by the owner; on Windows and Linux, checked by CI only.
@@ -398,7 +420,8 @@ The first build of the release workflow, a draft that was never published (see 1
     - `io.github.motalim_ai.zajil` for Linux and the Native Messaging host (`.host`).
   - FTP moved to 1.x.
 
-[Unreleased]: https://github.com/motalim-ai/zajil-download-manager/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/motalim-ai/zajil-download-manager/compare/v1.1.3...HEAD
+[1.1.3]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.3
 [1.1.2]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.2
 [1.1.1]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.1
 [1.1.0]: https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.0

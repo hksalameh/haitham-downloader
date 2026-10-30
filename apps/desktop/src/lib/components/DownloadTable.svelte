@@ -270,7 +270,7 @@
   {:else if id === "speed"}
     <td class="num">{d.status === "active" ? speed(locale.lang, locale.digits, d.speed) : ""}</td>
   {:else if id === "queue"}
-    <td class="muted"><bdi>{d.video ? locale.t("queue-video") : d.queue === "main" ? locale.t("queue-main") : d.queue}</bdi></td>
+    <td class="muted"><bdi>{d.video && !d.queue ? locale.t("queue-video") : d.queue === "main" ? locale.t("queue-main") : d.queue}</bdi></td>
   {:else if id === "last"}
     <td class="num muted">{d.last_try ? lastTry(locale.lang, locale.digits, d.last_try, locale.t) : ""}</td>
   {:else}
@@ -403,14 +403,15 @@
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
-    font-size: 13px;
+    /* Room to read (the users' notes, 2026-10-30: rows too tight). */
+    font-size: 14px;
   }
   th {
     text-align: start;
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 600;
     color: var(--muted);
-    padding: 4px 8px;
+    padding: 7px 10px;
     border-bottom: 1px solid var(--line);
     background: linear-gradient(var(--surface), var(--sunken));
     position: sticky;
@@ -499,9 +500,9 @@
     width: 1px;
     background: var(--line);
   }
-  /* Desktop density: tight rows with their grid lines. */
+  /* Rows with room between them, and their grid lines. */
   td {
-    padding: 3px 8px;
+    padding: 8px 10px;
     border-bottom: 1px solid color-mix(in oklab, var(--line) 70%, transparent);
     border-inline-start: 1px solid color-mix(in oklab, var(--line) 45%, transparent);
     white-space: nowrap;

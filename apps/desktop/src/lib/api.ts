@@ -4,6 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import type { FinishView } from "./bindings/FinishView";
 import type { IntegrationView } from "./bindings/IntegrationView";
 import type { AddRequest } from "./bindings/AddRequest";
 import type { DetailsView } from "./bindings/DetailsView";
@@ -98,6 +99,8 @@ export const api = {
   /** Takes downloads off the list and deletes their unfinished files. */
   removeWithFiles: (ids: number[]) => invoke<void>("remove_with_files", { ids }),
   moveToQueue: (ids: number[], queue: string) => invoke<void>("move_to_queue", { ids, queue }),
+  /** Video downloads into `queue` (null: the videos' own list). */
+  videoSetQueue: (ids: number[], queue: string | null) => invoke<void>("video_set_queue", { ids, queue }),
   /** «Copy link»: the downloads' links on the clipboard; how many went. */
   copyLinks: (ids: number[]) => invoke<number>("copy_links", { ids }),
   /** The add windows (M5.5): «Add a link», with a link or none, titled in
@@ -151,6 +154,9 @@ export const api = {
    * applies when Zajil next starts. */
   proxySetting: () => invoke<string | null>("proxy_setting"),
   setProxy: (proxy: string | null) => invoke<void>("set_proxy", { proxy }),
+  /** What a progress window does when its download finishes, for all. */
+  finishSetting: () => invoke<FinishView>("finish_setting"),
+  setFinishSetting: (finish: FinishView) => invoke<void>("set_finish_setting", { finish }),
   /** How many video downloads run at once, 1 to 8. */
   videosAtOnce: () => invoke<number>("videos_at_once_setting"),
   setVideosAtOnce: (n: number) => invoke<void>("set_videos_at_once", { n }),
@@ -195,17 +201,20 @@ export const api = {
   /** Brings «Video quality» to the front. */
   showVideoWindow: () => invoke<void>("show_video_window"),
   onVideoWindow: (handler: (open: boolean) => void): Promise<UnlistenFn> => listen<boolean>("video-window", (e) => handler(e.payload)),
-  videoDownload: (url: string, choice: ChoiceView, dest: string, name: string) =>
-    invoke<number>("video_download", { url, choice, dest, name }),
-  videoAddMany: (page: string, items: NewVideo[], dest: string) => invoke<number[]>("video_add_many", { page, items, dest }),
+  videoDownload: (url: string, choice: ChoiceView, dest: string, name: string, queue: string | null = null) =>
+    invoke<number>("video_download", { url, choice, dest, name, queue }),
+  videoAddMany: (page: string, items: NewVideo[], dest: string, queue: string | null = null) =>
+    invoke<number[]>("video_add_many", { page, items, dest, queue }),
   videoCancel: (id: number) => invoke<void>("video_cancel", { id }),
   /** The download a format chosen in the browser started, while «Video
    * quality» asks where it goes. */
   videoStarted: () => invoke<StartedView | null>("video_started"),
   onVideoStarted: (handler: (id: number) => void): Promise<UnlistenFn> => listen<number>("video-started", (e) => handler(e.payload)),
-  videoKeep: (id: number, folder: string, name: string) => invoke<void>("video_keep", { id, folder, name }),
+  videoKeep: (id: number, folder: string, name: string, queue: string | null = null) =>
+    invoke<void>("video_keep", { id, folder, name, queue }),
   videoDiscard: (id: number) => invoke<void>("video_discard", { id }),
-  videoLater: (id: number, folder: string, name: string) => invoke<void>("video_later", { id, folder, name }),
+  videoLater: (id: number, folder: string, name: string, queue: string | null = null) =>
+    invoke<void>("video_later", { id, folder, name, queue }),
   onVideoToolsProgress: (handler: (p: { tool: string; done: number; total: number | null }) => void): Promise<UnlistenFn> =>
     listen<{ tool: string; done: number; total: number | null }>("video-tools-progress", (e) => handler(e.payload)),
   onVideoProgress: (handler: (p: { id: number; done: number; total: number | null; speed: number | null }) => void): Promise<UnlistenFn> =>

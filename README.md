@@ -17,6 +17,7 @@
 
 <p>
 <a href="https://github.com/motalim-ai/zajil-download-manager/releases/latest"><img src="https://img.shields.io/github/v/release/motalim-ai/zajil-download-manager?label=release&color=1747C9" alt="Latest release"></a>
+<a href="https://github.com/motalim-ai/zajil-download-manager/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fzajil.by-wow.com%2Fdownloads.json" alt="Downloads"></a>
 <a href="https://github.com/motalim-ai/zajil-download-manager/actions/workflows/ci.yml"><img src="https://github.com/motalim-ai/zajil-download-manager/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue.svg" alt="License: GPL-3.0"></a>
 </p>
@@ -38,7 +39,7 @@
 
 الاسم من **الحمام الزاجل** الذي كان يوصل الرسائل مهما بعدت المسافة. وهذا ما نريده من البرنامج: أن يوصل ملفك كاملًا وسليمًا، حتى لو انقطع الاتصال في الطريق.
 
-**[زاجِل 1.1.2](https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.2) منشور،** وفيه تصليحات لأدوات الفيديو وقوائم يوتيوب و«استكمال الكل» والطوابير. والجديد في 1.1: جودات يوتيوب فورًا في زر الإضافة، يحمّلها محرّك زاجِل نفسه ويستكملها، والتحميل يبدأ في الخلفية و«معلومات ملف التحميل» مفتوحة، ونوافذ تفتح فورًا، ونافذة إعدادات فيها البروكسي، وشكل جديد بأيقونات ملونة. والتحديث التلقائي الموقّع يأتي في 1.2، وما بعده في [ROADMAP](docs/ROADMAP.md).
+**[زاجِل 1.1.3](https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.3) منشور،** وفيه الفيديو وقوائم التشغيل في الطوابير، وBrave وOpera وVivaldi، وواجهة أريح. والجديد في 1.1: جودات يوتيوب فورًا في زر الإضافة، يحمّلها محرّك زاجِل نفسه ويستكملها، والتحميل يبدأ في الخلفية و«معلومات ملف التحميل» مفتوحة، ونوافذ تفتح فورًا، ونافذة إعدادات فيها البروكسي، وشكل جديد بأيقونات ملونة. والتحديث التلقائي الموقّع يأتي في 1.2، وما بعده في [ROADMAP](docs/ROADMAP.md).
 
 ## ما يفعله زاجِل
 
@@ -155,7 +156,7 @@ This software uses code of [FFmpeg](https://ffmpeg.org) licensed under the [LGPL
 
 Zajil is Arabic for the **homing pigeon**, which carried messages however far they had to go. That is what we want from the program: your file gets to you whole and sound, even if the connection breaks on the way.
 
-**[Zajil 1.1.2](https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.2) is out,** with fixes for the video tools, YouTube playlists, «Resume all» and queues. New in 1.1: YouTube's qualities at once in the extension's button, downloaded and resumed by Zajil's own engine; the download starting in the background while “Download file info” is open; windows that open at once; a Settings window with the proxy; and a new look with coloured icons. Signed automatic updates come in 1.2; what comes next is in the [ROADMAP](docs/ROADMAP.md).
+**[Zajil 1.1.3](https://github.com/motalim-ai/zajil-download-manager/releases/tag/v1.1.3) is out,** with videos and playlists in queues, Brave, Opera and Vivaldi, and an easier list. New in 1.1: YouTube's qualities at once in the extension's button, downloaded and resumed by Zajil's own engine; the download starting in the background while “Download file info” is open; windows that open at once; a Settings window with the proxy; and a new look with coloured icons. Signed automatic updates come in 1.2; what comes next is in the [ROADMAP](docs/ROADMAP.md).
 
 ## What Zajil does
 

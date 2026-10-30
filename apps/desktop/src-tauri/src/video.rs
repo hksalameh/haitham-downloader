@@ -75,6 +75,9 @@ pub struct VideoState {
     /// Downloads cancelled while they ran: once stopped, they leave the
     /// list with what they wrote.
     discard: Mutex<HashSet<u64>>,
+    /// Downloads stopped because their queue's window closed: once
+    /// stopped, they wait for it to open again.
+    requeue: Mutex<HashSet<u64>>,
 }
 
 /// How long a video read ahead is kept (owner, 2026-10-28): in memory
@@ -221,6 +224,15 @@ struct Row {
     /// The quality chosen in the browser's list, as it said it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     label: Option<String>,
+    /// When it joined the list (RFC 3339), for the list's newest first;
+    /// none in a list saved before (owner's request, 2026-10-30).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    added: Option<String>,
+    /// The queue it runs in (owner's request, 2026-10-30): it starts when
+    /// its queue may run, within its downloads at once, and the queue's
+    /// «after it ends» waits for it. None: the videos' own list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    queue: Option<String>,
 }
 
 impl Row {
@@ -361,7 +373,7 @@ fn view_of(row: &Row, categories: &zajil_core::category::CategoriesFile) -> Down
             0.0
         },
         status: row.status,
-        queue: String::new(),
+        queue: row.queue.clone().unwrap_or_default(),
         folder: row.folder.clone(),
         parts: Vec::new(),
         segments: 0,
@@ -370,6 +382,7 @@ fn view_of(row: &Row, categories: &zajil_core::category::CategoriesFile) -> Down
         waits_for_site: false,
         description: None,
         last_try: None,
+        added: row.added.clone(),
         needs_ok: false,
         video: true,
     }
@@ -386,11 +399,14 @@ pub fn details(
     // over. Its parts are there once it began, its file once it finished.
     let resumable = row.status == StatusView::Done
         || !zajil_core::video::part_files(std::path::Path::new(&row.folder), &row.name).is_empty();
+    // Not known before its first byte (owner's report, 2026-10-29: «not
+    // possible» at the start of a download that could).
+    let known = resumable || row.done > 0;
     Some(DetailsView {
         download: view_of(&row, categories),
         url: row.url.clone(),
         segments: Vec::new(),
-        resumable: Some(resumable),
+        resumable: known.then_some(resumable),
         limit: None,
     })
 }
@@ -444,22 +460,182 @@ pub fn resume<R: tauri::Runtime>(handle: &tauri::AppHandle<R>, ids: &[u64]) {
     pump(handle);
 }
 
-/// The waiting video downloads that may start now, first come first: as
-/// many as leave at most `most` running.
-fn to_start(rows: &[Row], running: &HashSet<u64>, most: usize) -> Vec<u64> {
-    let free = most.saturating_sub(running.len());
-    rows.iter()
-        .filter(|r| r.status == StatusView::Waiting && !running.contains(&r.id))
-        .map(|r| r.id)
-        .take(free)
+/// What a queue allows its videos now: whether it may run (no schedule,
+/// its window open, or started now), and how many of its downloads may
+/// run besides those of its own list that run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Gate {
+    open: bool,
+    room: usize,
+}
+
+fn gates(
+    queues: &zajil_core::queue::QueuesFile,
+    run_now: &HashSet<String>,
+    now: jiff::Timestamp,
+    tz: &jiff::tz::TimeZone,
+) -> HashMap<String, Gate> {
+    queues
+        .queues
+        .iter()
+        .map(|q| {
+            let open =
+                q.schedule.as_ref().is_none_or(|s| s.is_open(now, tz)) || run_now.contains(&q.name);
+            let active = q
+                .items
+                .iter()
+                .filter(|i| i.status == zajil_core::queue::Status::Active)
+                .count();
+            let room = (q.max_active as usize).saturating_sub(active);
+            (q.name.clone(), Gate { open, room })
+        })
         .collect()
+}
+
+/// The queues' gates now, from the queues file (none if it cannot be read:
+/// a video in a queue then waits, rather than run outside its window).
+fn gates_now<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> Option<HashMap<String, Gate>> {
+    let queues = handle.state::<crate::App>().store.load().ok()?;
+    let run_now = handle
+        .state::<crate::schedule::SharedAfter>()
+        .run_now
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    Some(gates(
+        &queues,
+        &run_now,
+        jiff::Timestamp::now(),
+        &jiff::tz::TimeZone::system(),
+    ))
+}
+
+/// The waiting video downloads that may start now, first come first: as
+/// many as leave at most `most` running, and a video in a queue only while
+/// its queue may run and has room (a queue gone: as in none).
+fn to_start(
+    rows: &[Row],
+    running: &HashSet<u64>,
+    most: usize,
+    gates: &HashMap<String, Gate>,
+) -> Vec<u64> {
+    let free = most.saturating_sub(running.len());
+    let mut in_queue: HashMap<&str, usize> = HashMap::new();
+    for row in rows.iter().filter(|r| running.contains(&r.id)) {
+        if let Some(queue) = &row.queue {
+            *in_queue.entry(queue).or_default() += 1;
+        }
+    }
+    let mut ids = Vec::new();
+    for row in rows
+        .iter()
+        .filter(|r| r.status == StatusView::Waiting && !running.contains(&r.id))
+    {
+        if ids.len() >= free {
+            break;
+        }
+        if let Some(gate) = row
+            .queue
+            .as_deref()
+            .and_then(|q| gates.get(q).map(|g| (q, g)))
+        {
+            let (queue, gate) = gate;
+            let taken = in_queue.entry(queue).or_default();
+            if !gate.open || *taken >= gate.room {
+                continue;
+            }
+            *taken += 1;
+        }
+        ids.push(row.id);
+    }
+    ids
+}
+
+/// Every half minute: the videos of a queue whose window closed go back
+/// to waiting, and those whose window opened start.
+pub fn watch_queues<R: tauri::Runtime>(handle: tauri::AppHandle<R>) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            let state = handle.state::<VideoState>();
+            let in_queues = state.rows.lock().unwrap().iter().any(|r| r.queue.is_some());
+            if !in_queues {
+                continue;
+            }
+            if let Some(gates) = gates_now(&handle) {
+                let closed: Vec<u64> = state
+                    .rows
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|r| r.status == StatusView::Active)
+                    .filter(|r| {
+                        r.queue
+                            .as_deref()
+                            .and_then(|q| gates.get(q))
+                            .is_some_and(|g| !g.open)
+                    })
+                    .map(|r| r.id)
+                    .collect();
+                let downloads = state.downloads.lock().unwrap();
+                for id in closed {
+                    if let Some(stop) = downloads.get(&id) {
+                        state.requeue.lock().unwrap().insert(id);
+                        stop.request();
+                    }
+                }
+            }
+            pump(&handle);
+        }
+    });
+}
+
+/// Whether every video of `queue` is done (none: done).
+pub fn queue_videos_done(state: &VideoState, queue: &str) -> bool {
+    state
+        .rows
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r.queue.as_deref() == Some(queue))
+        .all(|r| r.status == StatusView::Done)
 }
 
 /// Starts the waiting video downloads whose turn it is.
 fn pump<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) {
     let state = handle.state::<VideoState>();
     let running = state.downloads.lock().unwrap().keys().copied().collect();
-    let ids = to_start(&state.rows.lock().unwrap(), &running, at_once(&state));
+    let in_queues = state.rows.lock().unwrap().iter().any(|r| r.queue.is_some());
+    let gates = if in_queues {
+        gates_now(handle)
+    } else {
+        Some(HashMap::new())
+    };
+    // The queues file unreadable: the videos of queues wait, the others go.
+    let gates = gates.unwrap_or_else(|| {
+        state
+            .rows
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r.queue.clone())
+            .map(|q| {
+                (
+                    q,
+                    Gate {
+                        open: false,
+                        room: 0,
+                    },
+                )
+            })
+            .collect()
+    });
+    let ids = to_start(
+        &state.rows.lock().unwrap(),
+        &running,
+        at_once(&state),
+        &gates,
+    );
     for id in ids {
         // A page «Video quality» asked just now is not asked again.
         let ask = !state.fresh.lock().unwrap().remove(&id);
@@ -615,6 +791,8 @@ pub fn receive<R: tauri::Runtime>(
             private,
             move_to: None,
             label,
+            added: Some(zajil_core::state::now_rfc3339()),
+            queue: None,
         });
         save_rows(&app, &state);
         let _ = handle.emit("downloads-changed", ());
@@ -701,9 +879,12 @@ pub async fn video_keep<R: tauri::Runtime>(
     id: u64,
     folder: String,
     name: String,
+    queue: Option<String>,
 ) -> Result<(), String> {
     let state = handle.state::<VideoState>();
     state.started.lock().unwrap().take_if(|s| *s == id);
+    let queue = known_queue(&handle.state::<crate::App>(), queue);
+    with_row(&state, id, |row| row.queue = queue);
     let name = zajil_core::sanitize::sanitize_file_name(name.trim());
     let wanted = MoveTo { folder, name };
     let done_file = with_row(&state, id, |row| match (&row.file, row.status) {
@@ -744,8 +925,9 @@ pub async fn video_later<R: tauri::Runtime>(
     id: u64,
     folder: String,
     name: String,
+    queue: Option<String>,
 ) -> Result<(), String> {
-    video_keep(handle.clone(), id, folder, name).await?;
+    video_keep(handle.clone(), id, folder, name, queue).await?;
     let state = handle.state::<VideoState>();
     pause(&state, &[id]);
     with_row(&state, id, |row| {
@@ -1186,6 +1368,25 @@ pub struct FormatView {
     /// `both`, `video` (picture only) or `audio`.
     pub kind: String,
     pub hls: bool,
+    /// The picture's codec as people know it (`H.264`, `VP9`, `AV1`,
+    /// `HEVC`), if the site says it: QuickTime plays H.264 and HEVC only
+    /// (owner's report, 2026-10-30).
+    pub codec: Option<String>,
+}
+
+/// A picture codec's name as people know it, from yt-dlp's `vcodec`.
+fn codec_name(vcodec: &str) -> Option<&'static str> {
+    let v = vcodec.to_ascii_lowercase();
+    [
+        (["avc1", "h264"], "H.264"),
+        (["vp09", "vp9"], "VP9"),
+        (["vp08", "vp8"], "VP8"),
+        (["av01", "av1"], "AV1"),
+        (["hvc1", "hev1"], "HEVC"),
+    ]
+    .into_iter()
+    .find(|(starts, _)| starts.iter().any(|s| v.starts_with(s)))
+    .map(|(_, name)| name)
 }
 
 /// What to download, as the page says it.
@@ -1365,6 +1566,7 @@ pub fn format_view(f: &Format) -> FormatView {
         size: f.filesize.or(f.filesize_approx),
         kind: kind.into(),
         hls: f.is_hls(),
+        codec: f.vcodec.as_deref().and_then(codec_name).map(Into::into),
     }
 }
 
@@ -1433,6 +1635,22 @@ pub async fn video_probe(
             },
             video.formats.len(),
         );
+        // Each format's height and codecs, never its link (owner's
+        // reports, 2026-10-30: which picture a site offers).
+        let each: Vec<String> = video
+            .formats
+            .iter()
+            .map(|f| {
+                format!(
+                    "{}p {} {}/{}",
+                    f.height.unwrap_or(0),
+                    f.ext,
+                    f.vcodec.as_deref().unwrap_or("?"),
+                    f.acodec.as_deref().unwrap_or("?")
+                )
+            })
+            .collect();
+        eprintln!("zajil: the formats: {}", each.join(", "));
     }
     let read = sent.url;
     Ok(match sent.probed {
@@ -1531,6 +1749,7 @@ struct Progress {
 /// its id comes at once; then `video-progress`, and `video-finished` or
 /// `video-failed`.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn video_download<R: tauri::Runtime>(
     app: State<'_, crate::App>,
     state: State<'_, VideoState>,
@@ -1538,8 +1757,10 @@ pub fn video_download<R: tauri::Runtime>(
     choice: ChoiceView,
     dest: String,
     name: String,
+    queue: Option<String>,
     handle: tauri::AppHandle<R>,
 ) -> Result<u64, String> {
+    let queue = known_queue(&app, queue);
     let id = FIRST_ID + state.next.fetch_add(1, Ordering::SeqCst) + 1;
     let private = state.private.lock().unwrap().contains(&url);
     let url = state
@@ -1564,7 +1785,10 @@ pub fn video_download<R: tauri::Runtime>(
         private,
         move_to: None,
         label: None,
+        added: Some(zajil_core::state::now_rfc3339()),
+        queue: None,
     });
+    with_row(&state, id, |row| row.queue = queue);
     state.fresh.lock().unwrap().insert(id);
     save_rows(&app, &state);
     let _ = handle.emit("downloads-changed", ());
@@ -1591,8 +1815,10 @@ pub fn video_add_many<R: tauri::Runtime>(
     page: String,
     items: Vec<NewVideo>,
     dest: String,
+    queue: Option<String>,
     handle: tauri::AppHandle<R>,
 ) -> Vec<u64> {
+    let queue = known_queue(&app, queue);
     let page_cookies = state.cookies.lock().unwrap().get(&page).cloned();
     let private = state.private.lock().unwrap().contains(&page);
     let mut ids = Vec::new();
@@ -1610,6 +1836,7 @@ pub fn video_add_many<R: tauri::Runtime>(
         let id = FIRST_ID + state.next.fetch_add(1, Ordering::SeqCst) + 1;
         let mut row = new_row(id, item, &dest);
         row.private = private;
+        row.queue = queue.clone();
         state.rows.lock().unwrap().push(row);
         ids.push(id);
     }
@@ -1623,6 +1850,43 @@ pub fn video_add_many<R: tauri::Runtime>(
 /// to its own site's videos (ADR-0005).
 fn same_site(a: &str, b: &str) -> bool {
     crate::view::host_of(a).is_some_and(|host| crate::view::host_of(b) == Some(host))
+}
+
+/// `queue` if the queues file has it, else none (the videos' own list).
+fn known_queue(app: &crate::App, queue: Option<String>) -> Option<String> {
+    let queue = queue.filter(|q| !q.is_empty())?;
+    let queues = app.store.load().ok()?;
+    queues.queue(&queue).map(|_| queue)
+}
+
+/// Puts video downloads `ids` in `queue` (none: the videos' own list), as
+/// «Add to queue» does for the others: they start when it may run.
+pub fn set_queue<R: tauri::Runtime>(
+    handle: &tauri::AppHandle<R>,
+    ids: &[u64],
+    queue: Option<String>,
+) {
+    let state = handle.state::<VideoState>();
+    let queue = known_queue(&handle.state::<crate::App>(), queue);
+    for &id in ids {
+        with_row(&state, id, |row| row.queue = queue.clone());
+    }
+    save_rows(&handle.state::<crate::App>(), &state);
+    let _ = handle.emit("downloads-changed", ());
+    pump(handle);
+}
+
+/// The event a finished video of a queue sends, for its queue's «after».
+pub const QUEUE_VIDEO_DONE: &str = "video-queue-done";
+
+/// [`set_queue`] for the page («Remove from queue»: none).
+#[tauri::command]
+pub fn video_set_queue<R: tauri::Runtime>(
+    handle: tauri::AppHandle<R>,
+    ids: Vec<u64>,
+    queue: Option<String>,
+) {
+    set_queue(&handle, &ids, queue);
 }
 
 /// A playlist's video as a waiting row: at its best, named after its
@@ -1648,6 +1912,8 @@ fn new_row(id: u64, item: NewVideo, dest: &str) -> Row {
         private: false,
         move_to: None,
         label: None,
+        added: Some(zajil_core::state::now_rfc3339()),
+        queue: None,
     }
 }
 
@@ -1713,6 +1979,10 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
             Some(done) => done.map_err(VideoErrorView::from),
             None => {
                 async {
+                    // How long the page took before the first byte, for the
+                    // log (owner's report, 2026-10-30: a few seconds).
+                    let asked = Instant::now();
+                    let had_ahead = ahead.is_some();
                     let read = match ahead {
                         Some((mut read, media)) => tokio::select! {
                             read = read.wait_for(Option::is_some) => read
@@ -1723,6 +1993,7 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
                         },
                         None => None,
                     };
+                    let read_used = read.is_some();
                     let probed = match read {
                         Some(sent) => Ok(sent.probed),
                         None if known.is_some() && !ask => Err(None),
@@ -1735,6 +2006,15 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
                         .await
                         .map_err(Some),
                     };
+                    eprintln!(
+                        "zajil: video {id}: its page {} in {} ms",
+                        match (read_used, had_ahead) {
+                            (true, _) => "was read ahead",
+                            (false, true) => "read ahead did not fit, read again",
+                            (false, false) => "was read now",
+                        },
+                        asked.elapsed().as_millis()
+                    );
                     let formats = match probed {
                         Err(None) => Ok(known.unwrap_or_default()),
                         Err(Some(e)) => Err(e.into()),
@@ -1874,6 +2154,7 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
             .load()
             .map(|s| s.language)
             .unwrap_or_default();
+        let requeued = state.requeue.lock().unwrap().remove(&id);
         with_row(&state, id, |row| match &result {
             Ok(file) => {
                 row.status = StatusView::Done;
@@ -1881,6 +2162,10 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
                 row.file = Some(file.display().to_string());
                 row.size = std::fs::metadata(file).ok().map(|m| m.len()).or(row.size);
                 row.done = row.size.unwrap_or(row.done);
+            }
+            // Stopped by its queue's window: it waits for the next.
+            Err(e) if e.kind == "stopped" && requeued => {
+                row.status = StatusView::Waiting;
             }
             Err(e) if e.kind == "stopped" => {
                 row.status = StatusView::Paused;
@@ -1896,6 +2181,14 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
         let _ = handle.emit("downloads-changed", ());
         // Its place is free: the next waiting one starts.
         pump(&handle);
+        // The last of its queue: what the user chose for after the queue.
+        if result.is_ok()
+            && let Some(queue) = with_row(&state, id, |row| row.queue.clone()).flatten()
+        {
+            // To `schedule::video_done`, through lib.rs (it needs the app's
+            // own runtime).
+            let _ = handle.emit(QUEUE_VIDEO_DONE, queue);
+        }
         match result {
             Ok(file) => {
                 let _ = handle.emit(
@@ -2143,6 +2436,8 @@ mod tests {
             private: false,
             move_to: None,
             label: None,
+            added: None,
+            queue: None,
         }
     }
 
@@ -2289,6 +2584,11 @@ mod tests {
             r#"{"format_id":"hls-720","ext":"mp4","vcodec":"avc1","acodec":"mp4a","protocol":"m3u8_native"}"#,
         );
         assert!(hls.hls);
+        assert_eq!(both.codec.as_deref(), Some("H.264"));
+        let vp9 =
+            f(r#"{"format_id":"dash-1v","ext":"mp4","vcodec":"vp09.00.51.08","acodec":"none"}"#);
+        assert_eq!(vp9.codec.as_deref(), Some("VP9"));
+        assert_eq!(sound.codec, None);
         // X's direct MP4: no codecs said, a picture's size.
         let x = f(r#"{"format_id":"http-2176","ext":"mp4","width":1280,"height":720}"#);
         assert_eq!((x.kind.as_str(), x.height), ("both", Some(720)));
@@ -2365,18 +2665,66 @@ mod tests {
             .map(|n| new_row(FIRST_ID + n, item("https://example.com/v", Some("v")), "/d"))
             .collect();
         let none = HashSet::new();
-        assert_eq!(to_start(&rows, &none, 2), [FIRST_ID + 1, FIRST_ID + 2]);
-        assert_eq!(to_start(&rows, &none, 3).len(), 3);
+        let free = HashMap::new();
+        assert_eq!(
+            to_start(&rows, &none, 2, &free),
+            [FIRST_ID + 1, FIRST_ID + 2]
+        );
+        assert_eq!(to_start(&rows, &none, 3, &free).len(), 3);
         let two: HashSet<u64> = [FIRST_ID + 1, FIRST_ID + 2].into();
         for row in &mut rows[..2] {
             row.status = StatusView::Active;
         }
-        assert!(to_start(&rows, &two, 2).is_empty());
+        assert!(to_start(&rows, &two, 2, &free).is_empty());
         // One ended, one paused: the next waiting one, not the paused.
         rows[0].status = StatusView::Done;
         rows[2].status = StatusView::Paused;
         let one: HashSet<u64> = [FIRST_ID + 2].into();
-        assert_eq!(to_start(&rows, &one, 2), [FIRST_ID + 4]);
+        assert_eq!(to_start(&rows, &one, 2, &free), [FIRST_ID + 4]);
+    }
+
+    /// A video in a queue starts only while its queue may run and has
+    /// room; one in no queue, or in a queue gone, as before.
+    #[test]
+    fn a_video_in_a_queue_follows_its_queue() {
+        let mut rows: Vec<Row> = (1..=4)
+            .map(|n| new_row(FIRST_ID + n, item("https://example.com/v", Some("v")), "/d"))
+            .collect();
+        rows[0].queue = Some("night".into());
+        rows[1].queue = Some("night".into());
+        rows[2].queue = Some("gone".into());
+        let none = HashSet::new();
+        let closed: HashMap<String, Gate> = [(
+            "night".to_owned(),
+            Gate {
+                open: false,
+                room: 3,
+            },
+        )]
+        .into();
+        assert_eq!(
+            to_start(&rows, &none, 8, &closed),
+            [FIRST_ID + 3, FIRST_ID + 4]
+        );
+        let one_room: HashMap<String, Gate> = [(
+            "night".to_owned(),
+            Gate {
+                open: true,
+                room: 1,
+            },
+        )]
+        .into();
+        assert_eq!(
+            to_start(&rows, &none, 8, &one_room),
+            [FIRST_ID + 1, FIRST_ID + 3, FIRST_ID + 4]
+        );
+        // One of the queue's own videos runs: no room left in it.
+        let running: HashSet<u64> = [FIRST_ID + 1].into();
+        rows[0].status = StatusView::Active;
+        assert_eq!(
+            to_start(&rows, &running, 8, &one_room),
+            [FIRST_ID + 3, FIRST_ID + 4]
+        );
     }
 
     /// Each one goes at the engine's best, named after its title as a
