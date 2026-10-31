@@ -89,7 +89,7 @@
       if (busy || added) return;
       const prefs = await api.addPrefs().catch(() => null);
       if (busy || added) return;
-      if ((prefs?.start_at_once ?? true) && !probe.page && !runsCode) {
+      if ((prefs?.start_at_once ?? false) && !probe.page && !runsCode) {
         const request = { url, name: null, category: null, description: null, queue: "main", folder: null, start: true, limit: null, connections: null };
         starting = (async () => {
           try {

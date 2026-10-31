@@ -170,7 +170,7 @@
     ["minimized", "settings-progress-minimized"],
     ["hidden", "settings-progress-hidden"],
   ] as const;
-  let addPrefs = $state<AddPrefs>({ progress_window: "shown", start_at_once: true, browser_at_once: false });
+  let addPrefs = $state<AddPrefs>({ progress_window: "shown", start_at_once: false, browser_at_once: false });
   onMount(() => {
     api.addPrefs().then(
       (p) => (addPrefs = p),

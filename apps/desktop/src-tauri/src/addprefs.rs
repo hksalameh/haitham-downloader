@@ -31,24 +31,20 @@ pub enum ProgressShow {
 pub struct AddPrefs {
     #[serde(default)]
     pub progress_window: ProgressShow,
-    /// On unless the user turns it off (the owner's request after trying
-    /// other download managers); a new name, so an earlier «off» that was
-    /// only the old default does not stay.
-    #[serde(default = "on")]
+    /// Haitham fork: wait for the destination choice by default, so a
+    /// download to an external drive doesn't start on an unintended disk.
+    /// Users can still enable early downloading in Settings.
+    #[serde(default)]
     pub start_at_once: bool,
     #[serde(default)]
     pub browser_at_once: bool,
-}
-
-fn on() -> bool {
-    true
 }
 
 impl Default for AddPrefs {
     fn default() -> Self {
         AddPrefs {
             progress_window: ProgressShow::default(),
-            start_at_once: true,
+            start_at_once: false,
             browser_at_once: false,
         }
     }
@@ -105,23 +101,24 @@ pub(crate) fn show_started<R: tauri::Runtime>(
 mod tests {
     use super::*;
 
-    /// At first the progress window shows and the download starts while
-    /// «Download file info» is open; a preferences file from before has the
-    /// same, even one where the old setting was off.
+    /// The customised version waits for a confirmed destination rather
+    /// than downloading to a drive before the user can choose its folder.
     #[test]
-    fn the_defaults_show_the_progress_and_start_at_once() {
+    fn the_defaults_show_progress_and_wait_for_destination() {
         assert_eq!(
             AddPrefs::default(),
             AddPrefs {
                 progress_window: ProgressShow::Shown,
-                start_at_once: true,
+                start_at_once: false,
                 browser_at_once: false
             }
         );
         let old: crate::closing::WindowPrefs = serde_json::from_str("{}").unwrap();
         assert_eq!(old.add, AddPrefs::default());
         let off: AddPrefs = serde_json::from_str(r#"{"start_while_open":false}"#).unwrap();
-        assert!(off.start_at_once);
+        assert!(!off.start_at_once);
+        let explicitly_on: AddPrefs = serde_json::from_str(r#"{"start_at_once":true}"#).unwrap();
+        assert!(explicitly_on.start_at_once);
         let some: AddPrefs = serde_json::from_str(r#"{"progress_window":"minimized"}"#).unwrap();
         assert_eq!(some.progress_window, ProgressShow::Minimized);
     }
@@ -137,7 +134,7 @@ mod tests {
             (true, false, false)
         );
         assert_eq!(prefs.add.progress_window, ProgressShow::Shown);
-        assert!(prefs.add.start_at_once);
+        assert!(!prefs.add.start_at_once);
         // A download from the browser asks first, as in IDM.
         assert!(!prefs.add.browser_at_once);
         assert!(!zajil_core::settings::SettingsFile::default().clipboard);

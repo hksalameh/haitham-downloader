@@ -3,8 +3,7 @@ import type { ProgressShow } from "./ProgressShow";
 
 export type AddPrefs = { progress_window: ProgressShow, 
 /**
- * On unless the user turns it off (the owner's request after trying
- * other download managers); a new name, so an earlier «off» that was
- * only the old default does not stay.
+ * Haitham fork: wait for a confirmed destination by default.
+ * Users may enable early downloading in Settings.
  */
 start_at_once: boolean, browser_at_once: boolean, };
