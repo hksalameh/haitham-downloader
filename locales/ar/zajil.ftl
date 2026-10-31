@@ -553,9 +553,14 @@ complete-drag-hint = اسحب الملف من هنا إلى أي برنامج أ
 update-available = توجد نسخة جديدة من زاجِل:
 update-release-page = صفحة الإصدار
 update-dismiss = إخفاء حتى التشغيل التالي
+update-install = حدّث الآن
+update-install-hint = تحفظ التحميلات تقدّمها وتتوقف، ثم يتحدّث زاجِل ويُفتح من جديد، فتُستكمل.
+update-skip = تخطَّ هذه النسخة
+update-downloading = يُنزَّل التحديث…
+update-failed = تعذّر تثبيت التحديث. نزّله من صفحة الإصدار.
 update-setting-title = التحديثات
 update-setting = ابحث عن نسخة جديدة عند التشغيل
-update-setting-hint = يسأل GitHub فقط، ولا يُنزَّل شيء.
+update-setting-hint = يسأل GitHub فقط. ولا يُنزَّل التحديث إلا إذا ضغطت «حدّث الآن».
 
 ## حد كل موقع
 
@@ -627,7 +632,8 @@ progress-connections = { $connections }، { $working }
 
 ## «Download file info»: the owner's test with a Google Drive link
 add-size-unknown = الحجم غير معروف
-add-web-page = هذا الرابط صفحة ويب، لا ملف. لتحميل الملف افتح الصفحة في المتصفح واضغط زر التحميل فيها، أو انسخ رابط الملف نفسه إن كان الموقع يعطيه وأضفه هنا.
+add-web-page = هذا الرابط صفحة ويب، لا ملف. إن كان فيها فيديو، فاضغط «حمّل الفيديو من الصفحة». وإلا فافتح الصفحة في المتصفح واضغط زر التحميل فيها.
+add-video-from-page = حمّل الفيديو من الصفحة
 add-probe-unsure-no-size = { $size }. السيرفر يدعم التقسيم، لكنه لا يعطي ما يُتأكَّد به أن الملف لم يتغيّر، فسيُحمَّل باتصال واحد، ويبدأ من جديد إذا انقطع.
 
 ## «Download file info»: the user's name, category and description (#103, #95)
@@ -695,6 +701,9 @@ video-waits = فيديو ينتظر أن تختار جودته في «جودة �
 video-waits-show = اعرضه
 video-quality = الجودة
 video-audio-only = صوت فقط ({ $format })
+video-sound = الصوت
+video-sound-original = الأصلي
+video-sound-dubbed = مدبلج
 video-playlist =
     { PLURAL($count) ->
         [zero] قائمة تشغيل فارغة.

@@ -235,6 +235,9 @@ pub fn run() {
         // Opens a finished download or its folder from Rust only
         // (`open_download`): the page has no opener permission.
         .plugin(tauri_plugin_opener::init())
+        // Zajil's own signed update (ADR-0011, `update.rs`): from Rust only,
+        // no permission for the page.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -535,6 +538,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         complete::complete_info,
         update::update_notice,
         update::open_release_page,
+        update::update_skip,
+        update::update_install,
         complete::drag_out
     ]
 }
@@ -652,6 +657,8 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         complete::complete_info,
         update::update_notice,
         update::open_release_page,
+        update::update_skip,
+        update::update_install,
         complete::drag_out,
         ui_test::ui_test_scenario,
         ui_test::ui_test_report,
@@ -1163,6 +1170,7 @@ fn serve_extension<R: tauri::Runtime>(handle: tauri::AppHandle<R>, data: PathBuf
                     private,
                     format,
                     audio,
+                    language,
                     label,
                     size,
                     ..
@@ -1170,10 +1178,19 @@ fn serve_extension<R: tauri::Runtime>(handle: tauri::AppHandle<R>, data: PathBuf
                 {
                     // A format chosen in the button's list: downloaded at
                     // once, without «Video quality» (owner, 2026-10-29).
+                    // A dub's language goes with its sound's itag
+                    // (`140-ar`), which `by_itag` reads.
+                    let sound = |itag: String| match language {
+                        Some(language) => format!("{itag}-{language}"),
+                        None => itag,
+                    };
                     let chosen = format.clone().map(|id| video::Chosen {
                         choice: match audio.clone() {
-                            Some(audio) => video::ChoiceView::Merge { video: id, audio },
-                            None => video::ChoiceView::Format { id },
+                            Some(audio) => video::ChoiceView::Merge {
+                                video: id,
+                                audio: sound(audio),
+                            },
+                            None => video::ChoiceView::Format { id: sound(id) },
                         },
                         label: label.clone(),
                         size: *size,

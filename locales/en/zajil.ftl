@@ -495,9 +495,14 @@ complete-drag-hint = Drag the file from here into any program or folder
 update-available = A new version of Zajil is available:
 update-release-page = Release page
 update-dismiss = Hide until the next start
+update-install = Update now
+update-install-hint = Downloads save their progress and stop, Zajil is updated and opens again, and they continue.
+update-skip = Skip this version
+update-downloading = Downloading the update…
+update-failed = The update could not be installed. Download it from the release page.
 update-setting-title = Updates
 update-setting = Check for a new version at start
-update-setting-hint = Only asks GitHub; nothing is downloaded.
+update-setting-hint = Only asks GitHub. An update is downloaded only when you press «Update now».
 
 ## حد كل موقع
 
@@ -569,7 +574,8 @@ progress-connections = { $connections }, { $working }
 
 ## «Download file info»: the owner's test with a Google Drive link
 add-size-unknown = Size unknown
-add-web-page = This link is a web page, not a file. To download the file, open the page in the browser and press its download button, or copy the file's own link, if the site gives one, and add it here.
+add-web-page = This link is a web page, not a file. If it has a video, press «Download the video from the page». Otherwise open the page in the browser and press its download button.
+add-video-from-page = Download the video from the page
 add-probe-unsure-no-size = { $size }. The server allows ranges but gives no way to be sure the file has not changed, so it downloads over one connection and starts over if cut.
 
 ## «Download file info»: the user's name, category and description (#103, #95)
@@ -629,6 +635,9 @@ video-waits = A video is waiting for you to choose its quality in “Video quali
 video-waits-show = Show it
 video-quality = Quality
 video-audio-only = Sound only ({ $format })
+video-sound = Sound
+video-sound-original = original
+video-sound-dubbed = dubbed
 video-playlist =
     { PLURAL($count) ->
         [one] A playlist with { $count } video.

@@ -196,8 +196,9 @@ pub fn split(ids: Vec<u64>) -> (Vec<u64>, Vec<u64>) {
 
 const ROWS_FILE: &str = "videos.json";
 
-/// One video download of the list. A stopped one starts over (yt-dlp's
-/// run folder is swept), so «resume» asks the page again.
+/// One video download of the list. A stopped one continues from what it
+/// saved (Zajil's own parts, or yt-dlp's kept folder); «resume» may ask
+/// the page again for new links.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Row {
     id: u64,
@@ -233,6 +234,10 @@ struct Row {
     /// «after it ends» waits for it. None: the videos' own list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     queue: Option<String>,
+    /// The program each part's link was made for (format id, `User-Agent`),
+    /// for a resume with the saved links: YouTube refuses some to another.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    agents: Vec<(String, String)>,
 }
 
 impl Row {
@@ -395,10 +400,13 @@ pub fn details(
     id: u64,
 ) -> Option<DetailsView> {
     let row = with_row(state, id, |row| row.clone())?;
-    // Zajil's own way (YouTube) continues from its parts; yt-dlp's starts
-    // over. Its parts are there once it began, its file once it finished.
+    // Zajil's own way (YouTube) continues from its parts, yt-dlp from the
+    // folder kept for the video: there once it began, its file once it
+    // finished.
+    let folder = std::path::Path::new(&row.folder);
     let resumable = row.status == StatusView::Done
-        || !zajil_core::video::part_files(std::path::Path::new(&row.folder), &row.name).is_empty();
+        || !zajil_core::video::part_files(folder, &row.name).is_empty()
+        || zajil_core::video::kept_folder(folder, &key_of(row.id)).is_dir();
     // Not known before its first byte (owner's report, 2026-10-29: «not
     // possible» at the start of a download that could).
     let known = resumable || row.done > 0;
@@ -426,8 +434,8 @@ pub fn url_of(state: &VideoState, id: u64) -> Option<String> {
     with_row(state, id, |row| row.url.clone())
 }
 
-/// «Pause»: a running video stops (it starts over when resumed); a
-/// waiting one stays out of the turn.
+/// «Pause»: a running video stops (it continues when resumed); a waiting
+/// one stays out of the turn.
 pub fn pause(state: &VideoState, ids: &[u64]) {
     for &id in ids {
         with_row(state, id, |row| {
@@ -793,6 +801,7 @@ pub fn receive<R: tauri::Runtime>(
             label,
             added: Some(zajil_core::state::now_rfc3339()),
             queue: None,
+            agents: Vec::new(),
         });
         save_rows(&app, &state);
         let _ = handle.emit("downloads-changed", ());
@@ -979,8 +988,14 @@ fn discard<R: tauri::Runtime>(handle: &tauri::AppHandle<R>, id: u64) {
 }
 
 /// What a cancelled download wrote: its parts, and its file if finished.
+/// The video's own key, for the folder yt-dlp keeps for it.
+fn key_of(id: u64) -> String {
+    format!("{id:x}")
+}
+
 fn remove_leftovers(row: &Row) {
     let folder = std::path::Path::new(&row.folder);
+    zajil_core::video::remove_kept(&zajil_core::video::kept_folder(folder, &key_of(row.id)));
     for part in zajil_core::video::part_files(folder, &row.name) {
         let _ = zajil_platform::fs::remove_file_retrying(&part);
     }
@@ -1010,18 +1025,55 @@ fn still_offered(choice: &ChoiceView, formats: &[Format]) -> ChoiceView {
 
 /// The format of `formats` that YouTube's itag `wanted` names: yt-dlp
 /// names a format by its itag, with a suffix for another language's sound
-/// or a "stable volume" one (`140-drc`), the plain one first.
+/// or a "stable volume" one (`140-drc`). Of those, the video's own sound
+/// before a dubbed one (users' reports, 2026-10-31), then the plain one.
 fn by_itag(formats: &[Format], wanted: &str) -> Option<String> {
-    formats
-        .iter()
-        .find(|f| f.id == wanted)
-        .or_else(|| {
-            formats.iter().find(|f| {
-                f.id.split_once('-')
-                    .is_some_and(|(itag, rest)| itag == wanted && !rest.contains("drc"))
+    // A dub chosen in the browser's list: its itag and language (`140-ar`,
+    // owner's request, 2026-10-31); that language's sound, else as usual.
+    if !formats.iter().any(|f| f.id == wanted)
+        && let Some((itag, language)) = wanted.split_once('-')
+        && language.starts_with(|c: char| c.is_ascii_alphabetic())
+        && language != "drc"
+    {
+        let lang = |f: &Format| {
+            f.language.as_deref().is_some_and(|l| {
+                l.eq_ignore_ascii_case(language)
+                    || l.split('-')
+                        .next()
+                        .is_some_and(|b| b.eq_ignore_ascii_case(language))
             })
-        })
-        .map(|f| f.id.clone())
+        };
+        return formats
+            .iter()
+            .find(|f| {
+                lang(f)
+                    && f.id
+                        .split_once('-')
+                        .map_or(f.id == itag, |(i, rest)| i == itag && !rest.contains("drc"))
+            })
+            .map(|f| f.id.clone())
+            .or_else(|| by_itag(formats, itag));
+    }
+    let mut best: Option<&Format> = None;
+    for f in formats.iter().filter(|f| {
+        f.id == wanted
+            || f.id
+                .split_once('-')
+                .is_some_and(|(itag, rest)| itag == wanted && !rest.contains("drc"))
+    }) {
+        // Ties keep the first: the plain one, as yt-dlp lists it.
+        let wins = match best {
+            None => true,
+            Some(b) => {
+                f.sound_rank() > b.sound_rank()
+                    || (f.sound_rank() == b.sound_rank() && f.id == wanted && b.id != wanted)
+            }
+        };
+        if wins {
+            best = Some(f);
+        }
+    }
+    best.map(|f| f.id.clone())
 }
 
 /// A choice made in the browser's list, in the names of yt-dlp's formats;
@@ -1372,6 +1424,13 @@ pub struct FormatView {
     /// `HEVC`), if the site says it: QuickTime plays H.264 and HEVC only
     /// (owner's report, 2026-10-30).
     pub codec: Option<String>,
+    /// A sound that is the video's own (not a dubbed one), when the page
+    /// offers several (users' reports, 2026-10-31).
+    pub original: bool,
+    /// A sound's language (`en`, `ar-EG`…), if the site says it: «Video
+    /// quality» lets the user take a dubbed one (owner's request,
+    /// 2026-10-31).
+    pub language: Option<String>,
 }
 
 /// A picture codec's name as people know it, from yt-dlp's `vcodec`.
@@ -1567,7 +1626,27 @@ pub fn format_view(f: &Format) -> FormatView {
         kind: kind.into(),
         hls: f.is_hls(),
         codec: f.vcodec.as_deref().and_then(codec_name).map(Into::into),
+        original: false,
+        language: f.language.clone().filter(|l| {
+            !l.is_empty()
+                && l.len() <= 35
+                && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        }),
     }
+}
+
+/// The views of `formats`, the video's own sounds marked: those yt-dlp
+/// ranks highest.
+pub fn format_views(formats: &[Format]) -> Vec<FormatView> {
+    let sound = |f: &&Format| f.has_audio() && !f.has_video();
+    let top = formats.iter().filter(sound).map(Format::sound_rank).max();
+    formats
+        .iter()
+        .map(|f| FormatView {
+            original: sound(&f) && Some(f.sound_rank()) == top,
+            ..format_view(f)
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -1641,8 +1720,18 @@ pub async fn video_probe(
             .formats
             .iter()
             .map(|f| {
+                // A sound's language and rank: the video's own or dubbed.
+                let sound = if f.has_audio() && !f.has_video() {
+                    format!(
+                        " [{} {}]",
+                        f.language.as_deref().unwrap_or("?"),
+                        f.sound_rank()
+                    )
+                } else {
+                    String::new()
+                };
                 format!(
-                    "{}p {} {}/{}",
+                    "{}p {} {}/{}{sound}",
                     f.height.unwrap_or(0),
                     f.ext,
                     f.vcodec.as_deref().unwrap_or("?"),
@@ -1656,7 +1745,7 @@ pub async fn video_probe(
     Ok(match sent.probed {
         Probed::Video(video) => {
             let best = video.best_choice().map(ChoiceView::from);
-            let formats = video.formats.iter().map(format_view).collect();
+            let formats = format_views(&video.formats);
             state
                 .formats
                 .lock()
@@ -1787,6 +1876,7 @@ pub fn video_download<R: tauri::Runtime>(
         label: None,
         added: Some(zajil_core::state::now_rfc3339()),
         queue: None,
+        agents: Vec::new(),
     });
     with_row(&state, id, |row| row.queue = queue);
     state.fresh.lock().unwrap().insert(id);
@@ -1914,6 +2004,7 @@ fn new_row(id: u64, item: NewVideo, dest: &str) -> Row {
         label: None,
         added: Some(zajil_core::state::now_rfc3339()),
         queue: None,
+        agents: Vec::new(),
     }
 }
 
@@ -1949,6 +2040,7 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
                 progressed(&events, id, done, total, speed);
             }
             // A part saved before was of another file: said in the list.
+            VideoEvent::Note(note) => eprintln!("zajil: video {id}: {note}"),
             VideoEvent::StartedOver(why) => {
                 eprintln!("zajil: video {id}: {why}");
                 with_row(&events.state::<VideoState>(), id, |row| {
@@ -1970,6 +2062,7 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
                 ids: &saved_ids,
                 dest: std::path::Path::new(&row.folder),
                 name: &row.name,
+                agents: &row.agents,
             };
             runner.resume_saved(&saved, &stop, &mut on_event).await
         } else {
@@ -2068,6 +2161,14 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
                         .cloned();
                     match chosen {
                         Ok((formats, choice)) => {
+                            let agents: Vec<(String, String)> = formats
+                                .iter()
+                                .filter(|f| choice.ids().contains(&f.id.as_str()))
+                                .filter_map(|f| Some((f.id.clone(), f.user_agent()?.to_owned())))
+                                .collect();
+                            with_row(&handle.state::<VideoState>(), id, |row| {
+                                row.agents = agents;
+                            });
                             let request = Download {
                                 url: &row.url,
                                 choice: &choice,
@@ -2077,7 +2178,7 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
                                 name: &row.name,
                             };
                             runner
-                                .download(&request, &stop, &mut on_event)
+                                .download_keeping(&request, Some(&key_of(id)), &stop, &mut on_event)
                                 .await
                                 .map_err(VideoErrorView::from)
                         }
@@ -2087,6 +2188,14 @@ fn start<R: tauri::Runtime>(handle: tauri::AppHandle<R>, id: u64, ask: bool) {
                 .await
             }
         };
+        // Finished either way: what yt-dlp kept for it is not needed.
+        if result.is_ok() {
+            let kept =
+                zajil_core::video::kept_folder(std::path::Path::new(&row.folder), &key_of(id));
+            let _ =
+                tauri::async_runtime::spawn_blocking(move || zajil_core::video::remove_kept(&kept))
+                    .await;
+        }
         let state = handle.state::<VideoState>();
         state.downloads.lock().unwrap().remove(&id);
         state.told.lock().unwrap().remove(&id);
@@ -2283,6 +2392,52 @@ mod tests {
             from_list(&ChoiceView::Format { id: "251".into() }, &formats),
             ChoiceView::Format { id: "251".into() }
         );
+        // The video's own sound before a dub of the same itag (users'
+        // reports, 2026-10-31), wherever yt-dlp lists it.
+        let sound = |id: &str, pref: i64| -> Format {
+            serde_json::from_value(
+                serde_json::json!({ "format_id": id, "language_preference": pref }),
+            )
+            .unwrap()
+        };
+        let dubbed = [sound("140-0", -1), sound("140-1", 10), sound("140-2", -1)];
+        assert_eq!(by_itag(&dubbed, "140").as_deref(), Some("140-1"));
+        let plain_first = [format("140"), format("140-1")];
+        assert_eq!(by_itag(&plain_first, "140").as_deref(), Some("140"));
+        // A dub chosen in the list: its language's sound (owner's request,
+        // 2026-10-31); a language the page lacks: the video's own.
+        let spoken = |id: &str, pref: i64, language: &str| -> Format {
+            serde_json::from_value(serde_json::json!({
+                "format_id": id, "language_preference": pref, "language": language,
+            }))
+            .unwrap()
+        };
+        let tracks = [
+            spoken("140-0", -1, "ar"),
+            spoken("140-drc", -1, "ar"),
+            spoken("140-1", 10, "en-US"),
+            spoken("251-0", -1, "ar"),
+        ];
+        assert_eq!(by_itag(&tracks, "140-ar").as_deref(), Some("140-0"));
+        assert_eq!(by_itag(&tracks, "140-en").as_deref(), Some("140-1"));
+        assert_eq!(by_itag(&tracks, "140-fr").as_deref(), Some("140-1"));
+        assert_eq!(
+            from_list(
+                &ChoiceView::Merge {
+                    video: "299".into(),
+                    audio: "140-ar".into()
+                },
+                &[
+                    format("299"),
+                    spoken("140-0", -1, "ar"),
+                    spoken("140-1", 10, "en")
+                ]
+            ),
+            ChoiceView::Merge {
+                video: "299".into(),
+                audio: "140-0".into()
+            }
+        );
         assert_eq!(
             from_list(&ChoiceView::Format { id: "18".into() }, &formats),
             ChoiceView::Best
@@ -2438,6 +2593,7 @@ mod tests {
             label: None,
             added: None,
             queue: None,
+            agents: Vec::new(),
         }
     }
 

@@ -57,6 +57,65 @@ describe("the video button's list", () => {
     expect(list.audio.map((/** @type {any} */ c) => c.name)).toEqual(["WEBM 140 kbps", "M4A 130 kbps"]);
   });
 
+  // A video with its own sound and an AI dub, in the same itags (owner's
+  // request, 2026-10-31): the list offers the sound's language, the
+  // video's own first, and a dub goes with its language to Zajil.
+  it("offers a dub's language, and sends it with the dub's sound", () => {
+    const own = { name: "English (US) original", main: true, lang: "en-US.4" };
+    const dub = { name: "العربية", main: false, lang: "ar.3" };
+    const sounds = page.formats.filter((f) => f.mime.startsWith("audio/") && !f.drc);
+    const data = {
+      ...page,
+      formats: [
+        ...page.formats.filter((f) => !f.mime.startsWith("audio/")),
+        ...sounds.map((f) => ({ ...f, track: dub, size: String(9 * MB) })),
+        ...sounds.map((f) => ({ ...f, track: own })),
+      ],
+    };
+    const make = load();
+    const list = make(data);
+    expect(list.tracks).toEqual([
+      { name: "English (US) original", lang: "en-US", main: true },
+      { name: "العربية", lang: "ar", main: false },
+    ]);
+    expect(list.lang).toBe("");
+    expect(list.video[0].send).toEqual({ video: "299", audio: "140" });
+    expect(list.audio.map((/** @type {any} */ c) => c.send)).toEqual([{ id: "251" }, { id: "140" }]);
+    const dubbed = make(data, "ar");
+    expect(dubbed.lang).toBe("ar");
+    // 360p has the video's own sound inside: left out with a dub.
+    expect(dubbed.video.map((/** @type {any} */ c) => c.send)).toEqual([
+      { video: "299", audio: "140", language: "ar" },
+      { video: "303", audio: "251", language: "ar" },
+    ]);
+    expect(dubbed.audio.map((/** @type {any} */ c) => c.send)).toEqual([
+      { id: "251", language: "ar" },
+      { id: "140", language: "ar" },
+    ]);
+    // A language the page lacks, or one language only: the video's own.
+    expect(make(data, "fr").video[0].send).toEqual({ video: "299", audio: "140" });
+    expect(make(page).tracks).toEqual([]);
+    // The original chosen by its name goes with its language too.
+    expect(make(data, "en-US").video[0].send).toEqual({ video: "299", audio: "140", language: "en-US" });
+  });
+
+  // YouTube marks the dub in the viewer's language as the default (owner's
+  // report, 2026-10-31: an Arabic dub chosen came as English): a language
+  // chosen goes with its name to Zajil all the same.
+  it("sends a chosen dub's language even when YouTube marks that dub the default", () => {
+    const own = { name: "English (United States) original", main: false, lang: "en-US.4" };
+    const dub = { name: "Arabic", main: true, lang: "ar.3" };
+    const sounds = page.formats.filter((f) => f.mime.startsWith("audio/") && !f.drc);
+    const data = {
+      ...page,
+      formats: [...page.formats.filter((f) => !f.mime.startsWith("audio/")), ...sounds.map((f) => ({ ...f, track: dub })), ...sounds.map((f) => ({ ...f, track: own }))],
+    };
+    const make = load();
+    expect(make(data).video[0].send).toEqual({ video: "299", audio: "140" });
+    expect(make(data, "ar").video[0].send).toEqual({ video: "299", audio: "140", language: "ar" });
+    expect(make(data, "ar").audio.map((/** @type {any} */ c) => c.send.language)).toEqual(["ar", "ar"]);
+  });
+
   it("checks what the page says: nothing for a live stream, no format, or nonsense", () => {
     const choicesOf = load();
     expect(choicesOf(null)).toBeNull();
