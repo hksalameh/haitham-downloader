@@ -19,6 +19,7 @@ mod live;
 mod measure;
 mod menu;
 mod offers;
+mod problem;
 mod removal;
 mod saving;
 mod schedule;
@@ -256,7 +257,8 @@ pub fn run() {
         ))
         .manage(schedule::SharedAfter::default())
         .manage(complete::Show::default())
-        .manage(update::Notice::default());
+        .manage(update::Notice::default())
+        .manage(update::ExtensionOld::default());
     #[cfg(feature = "ui-test")]
     let builder = builder.manage(ui_test::UiTest::from_args(&args));
     builder
@@ -540,6 +542,9 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         update::open_release_page,
         update::update_skip,
         update::update_install,
+        update::extension_old_notice,
+        update::open_extension_help,
+        problem::copy_problem_info,
         complete::drag_out
     ]
 }
@@ -659,6 +664,9 @@ fn handlers<R: tauri::Runtime>() -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Sen
         update::open_release_page,
         update::update_skip,
         update::update_install,
+        update::extension_old_notice,
+        update::open_extension_help,
+        problem::copy_problem_info,
         complete::drag_out,
         ui_test::ui_test_scenario,
         ui_test::ui_test_report,
@@ -1217,6 +1225,12 @@ fn serve_extension<R: tauri::Runtime>(handle: tauri::AppHandle<R>, data: PathBuf
                     video::read_ahead(&handle, page.clone(), media.clone(), cookies.clone());
                     return zajil_host::Response::ok();
                 }
+                // The extension is older than this Zajil needs: the main
+                // window asks the user to update it.
+                if let zajil_host::Request::ExtensionOld { version, .. } = &request {
+                    update::extension_old(&handle, version);
+                    return zajil_host::Response::ok();
+                }
                 // The last private window closed: its videos leave the list
                 // too (the queues' downloads go below).
                 if let zajil_host::Request::PrivateClosed { .. } = &request {
@@ -1552,7 +1566,9 @@ fn watch_clipboard<R: tauri::Runtime>(handle: tauri::AppHandle<R>) {
 /// `appimage`: `APPIMAGE` is set), the host beside it is copied to `fixed`
 /// in Zajil's data folder, and that copy is the one given to browsers,
 /// kept the same as the AppImage's (#129, `native_host::fixed_copy`).
-/// macOS's App Translocation is still refused: the user moves the app.
+/// macOS's App Translocation is still refused: the user moves the app. On
+/// Windows, a folder other users may change (a second drive, #334) gets
+/// the same copy; on macOS and Linux it is refused.
 fn host_beside(exe: &Path, appimage: bool, fixed: &Path) -> Result<PathBuf, view::HostProblemView> {
     use view::HostProblemView as Problem;
     // Links resolved on macOS and Linux (a CLI or Homebrew link). Not on
@@ -1604,6 +1620,23 @@ fn host_beside(exe: &Path, appimage: bool, fixed: &Path) -> Result<PathBuf, view
     let safe =
         |path: &Path| zajil_platform::fs::only_user_or_root_can_change(path).unwrap_or(false);
     if !safe(&host) || !safe(dir) {
+        // Windows: Zajil installed where other users may change files (a
+        // second drive gives them that by default; a user's report on
+        // Brave, #334). The browsers are given a copy in Zajil's own
+        // folder, which only this user can change, kept the same as the
+        // installed one, as for an AppImage.
+        #[cfg(windows)]
+        {
+            eprintln!(
+                "zajil: other users may change {}: the browsers get a copy of zajil-host",
+                dir.display()
+            );
+            return zajil_platform::native_host::fixed_copy(&host, fixed).map_err(|err| {
+                eprintln!("zajil: the browsers' copy of zajil-host: {err}");
+                Problem::Unsafe
+            });
+        }
+        #[cfg(not(windows))]
         return Err(Problem::Unsafe);
     }
     Ok(host)
@@ -2032,6 +2065,8 @@ fn from_extension_with(
         zajil_host::Request::Video { .. } | zajil_host::Request::PeekVideo { .. } => {
             zajil_host::Response::refused(video_soon(lang))
         }
+        // Served before it reaches here.
+        zajil_host::Request::ExtensionOld { .. } => zajil_host::Response::ok(),
         zajil_host::Request::PrivateClosed { .. } => match discard_private(store) {
             Ok(()) => zajil_host::Response::ok(),
             Err(err) => zajil_host::Response::refused(err.to_string()),
@@ -2762,7 +2797,13 @@ async fn copy_links<R: tauri::Runtime>(
     if links.is_empty() || in_scene(&handle) {
         return Ok(links.len());
     }
-    let text = links.join("\n");
+    copy_text(&app, links.join("\n")).await?;
+    Ok(links.len())
+}
+
+/// `text` on the clipboard, kept so the clipboard monitoring does not
+/// offer it back.
+async fn copy_text(app: &App, text: String) -> Result<(), String> {
     if let Ok(mut copied) = app.copied.lock() {
         copied.clone_from(&text);
     }
@@ -2778,8 +2819,7 @@ async fn copy_links<R: tauri::Runtime>(
     })
     .await
     .map_err(blocking_err)?
-    .map_err(|e| e.to_string())?;
-    Ok(links.len())
+    .map_err(|e| e.to_string())
 }
 
 /// Takes downloads off the list and deletes their unfinished files (the
