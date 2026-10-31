@@ -4,6 +4,8 @@
 
 **الحالة:** إصدار تجريبي (Preview). لم تثبت مساواته الكاملة لبرنامج IDM، ولا يُنصح بإزالة مدير التحميل القديم حتى الاختبار.
 
+**تطوير قيد المراجعة:** محرك HTTP Range يعيد توزيع ذيول الأجزاء البطيئة بين الاتصالات الحرة، مع 32 اتصالًا كحد أقصى له (محرك aria2 الاحتياطي يبقى بحد 16). توجد اختبارات محلية لمطابقة SHA-256 وإعادة الاستكمال بعد إعادة تشغيل المحرك، لكن لم تُجرَ مقارنة سرعة واقعية مع IDM أو زاجِل. [خارطة المقارنة مع زاجِل](docs/ZAJIL_PARITY_PLAN.md).
+
 ## طريقة الاستخدام على ويندوز
 
 1. من **Releases** حمّل أحدث ملف `HaithamDownloader_Classic_420.exe`.
@@ -27,10 +29,10 @@ python app.py
 ## بناء ملف EXE
 
 ```powershell
-python -m PyInstaller --noconfirm HaithamDownloader_Classic_420.spec
+python -m PyInstaller --noconfirm HaithamDownloader_Classic_425_Dynamic.spec
 ```
 
-المخرج `dist/HaithamDownloader_Classic_420.exe`.
+المخرج التجريبي `dist/HaithamDownloader_Classic_425_Dynamic.exe`. لا تستبدل نسخة المستخدم المعتمدة قبل اختبار الواجهة والتكامل مع Chrome على جهازه.
 
 ## قراءة الأداء أثناء التحميل
 
@@ -40,6 +42,8 @@ python -m PyInstaller --noconfirm HaithamDownloader_Classic_420.spec
 
 ```powershell
 python test_range_connections.py
+python test_dynamic_range_rebalancing.py
+python test_without_aria2.py
 python test_adaptive_retry.py
 python test_connection_telemetry.py
 python test_missing_file.py

@@ -81,7 +81,14 @@ class Service:
             "schedule_start":"02:00","schedule_stop":"07:00"})
         self.api_token=secrets.token_hex(24)
         self.engine=AriaClient(root=self.root/"engine",downloads=Path(self.options["download_dir"]))
-        self.engine.start()
+        self.engine_error=""
+        try:
+            self.engine.start()
+        except FileNotFoundError as exc:
+            # Do not prevent independently supported HTTP Range downloads
+            # because the optional aria2 fallback is not installed.
+            self.engine=None
+            self.engine_error=str(exc)
         self.range_engine=RangeManager(self.root/'range_engine')
         self.configure_engine()
         self.pending={}
@@ -93,6 +100,8 @@ class Service:
         self.scheduler.start()
 
     def configure_engine(self):
+        if self.engine is None:
+            return
         count=max(1,min(16,int(self.options.get("connections",12))))
         concurrent=max(1,min(10,int(self.options.get("concurrent",3))))
         self.engine.rpc("aria2.changeGlobalOption",[{
@@ -106,11 +115,11 @@ class Service:
 
     def snapshot(self):
         try:
-            tasks=self.engine.list_all()
+            tasks=self.engine.list_all() if self.engine is not None else []
         except Exception as exc:
             tasks=[]
             error=str(exc)
-        else:error=""
+        else:error=self.engine_error
         new={}
         now=datetime.now().strftime("%Y-%m-%d %H:%M")
         with self.lock:
@@ -148,6 +157,7 @@ class Service:
                 self.persist();self.last_write=time.monotonic()
         speeds=sum(x.get("speed",0) for x in rows if x.get("status")=="active")
         return {"items":rows,"pending":pending,"speed":speeds,"error":error,
+                "aria2_available":self.engine is not None,
                 "options":self.options,"version":"4.1-classic-preview"}
 
     def add(self,url,directory=None,filename=None,kind="file",mode="aria2"):
@@ -169,12 +179,14 @@ class Service:
                 filename = safe_name(f"{stem} ({number}){extension}")
                 number += 1
         if kind=="video":return self.start_video(url,target,filename)
-        if mode=="segmented" and urlsplit(url).scheme in ('http','https'):
+        if (mode=="segmented" or self.engine is None) and urlsplit(url).scheme in ('http','https'):
             try:
                 gid=self.range_engine.add(url,target,filename,self.options.get('connections',12),self.options.get("temp_dir") or None)
                 return {'gid':gid,'name':filename,'mode':'connections'}
             except UnsupportedRange:
                 pass # The robust aria2 fallback remains available for unsupported hosts.
+        if self.engine is None:
+            raise RuntimeError("This link requires the aria2 fallback, which is not installed. Install aria2c or use a direct HTTP Range file.")
         gid=self.engine.add(url,directory=target,filename=filename)
         now=datetime.now().strftime("%Y-%m-%d %H:%M")
         with self.lock:
@@ -257,6 +269,8 @@ class Service:
             if gid.startswith("video-"):
                 if op in ("pause","remove"):self.video_cancel.get(gid,threading.Event()).set()
                 if op=="resume":continue
+            elif self.engine is None:
+                raise RuntimeError("aria2 is unavailable; this existing download cannot be controlled until it is installed")
             elif op=="pause":
                 self.engine.rpc("aria2.pause",[gid])
             elif op=="resume":
@@ -321,7 +335,7 @@ class Service:
             if key in values:safe[key]=values[key]
         if "language" in safe and safe["language"] not in ("ar","en"):raise ValueError("Invalid language")
         if "theme" in safe and safe["theme"] not in ("dark","light"):raise ValueError("Invalid theme")
-        if "connections" in safe:safe["connections"]=max(1,min(16,int(safe["connections"])))
+        if "connections" in safe:safe["connections"]=max(1,min(32,int(safe["connections"])))
         if "concurrent" in safe:safe["concurrent"]=max(1,min(10,int(safe["concurrent"])))
         if "download_dir" in safe:
             p=Path(safe["download_dir"]).expanduser()
@@ -418,7 +432,8 @@ class Service:
         for p in list(self.pending.values()):p["event"].set()
         self.persist()
         self.range_engine.close()
-        self.engine.close()
+        if self.engine is not None:
+            self.engine.close()
 
 class Handler(BaseHTTPRequestHandler):
     def _json(self,status,data):
