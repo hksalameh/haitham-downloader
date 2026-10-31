@@ -215,7 +215,11 @@ async function refresh(){
  UI.options=data.options||UI.options;
  UI.speed=data.speed||0;
  document.body.dataset.theme=UI.options.theme||"dark";
- $("connection-status").textContent=data.error?"● مشكلة المحرك":"● المحرك متصل";
+ $("connection-status").textContent=data.aria2_available===false
+   ?tr("● التحميل المباشر جاهز","● Direct downloads ready")
+   :(data.error?tr("● مشكلة المحرك","● Engine issue"):tr("● المحرك متصل","● Engine online"));
+ $("connection-status").title=data.aria2_available===false
+   ?tr("محرك HTTP Range يعمل؛ بعض الروابط تحتاج تثبيت aria2.","HTTP Range works; some links need aria2 installed."):(data.error||"");
  buildNav();drawTable();
  // Queue browser handoff when no local dialog is occupying the screen.
  if(UI.pendingId&&!UI.pending.some(p=>p.id===UI.pendingId)){UI.pendingId=null;$("download-modal").hidden=true}

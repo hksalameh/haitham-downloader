@@ -29,10 +29,10 @@ python app.py
 ## بناء ملف EXE
 
 ```powershell
-python -m PyInstaller --noconfirm HaithamDownloader_Classic_420.spec
+python -m PyInstaller --noconfirm HaithamDownloader_Classic_425_Dynamic.spec
 ```
 
-المخرج `dist/HaithamDownloader_Classic_420.exe`.
+المخرج التجريبي `dist/HaithamDownloader_Classic_425_Dynamic.exe`. لا تستبدل نسخة المستخدم المعتمدة قبل اختبار الواجهة والتكامل مع Chrome على جهازه.
 
 ## قراءة الأداء أثناء التحميل
 

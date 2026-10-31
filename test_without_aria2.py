@@ -48,6 +48,7 @@ try:
         try:
             state=app.snapshot()
             assert "aria2c" in state["error"]
+            assert state["aria2_available"] is False
             url=f"http://127.0.0.1:{server.server_port}/file"
             # A user may choose the ordinary mode, yet the native engine
             # should still take the file when aria2 is absent.

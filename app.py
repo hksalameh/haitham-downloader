@@ -157,6 +157,7 @@ class Service:
                 self.persist();self.last_write=time.monotonic()
         speeds=sum(x.get("speed",0) for x in rows if x.get("status")=="active")
         return {"items":rows,"pending":pending,"speed":speeds,"error":error,
+                "aria2_available":self.engine is not None,
                 "options":self.options,"version":"4.1-classic-preview"}
 
     def add(self,url,directory=None,filename=None,kind="file",mode="aria2"):
