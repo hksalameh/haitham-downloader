@@ -1,0 +1,78 @@
+name: Haitham Windows preview
+
+on:
+  push:
+    branches: [zajil-haitham-base]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: haitham-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-preview:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      HAITHAM_PREVIEW: "1"
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: rustup toolchain install && rustup target add x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: haitham-preview-windows
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Obtain pinned QuickJS for the video helper
+        shell: bash
+        run: |
+          qjs="$(bash scripts/get-qjs.sh "$RUNNER_TEMP/quickjs")"
+          echo "ZAJIL_QJS=$qjs" >> "$GITHUB_ENV"
+      - name: Compile all bundled companion tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          t=x86_64-pc-windows-msvc
+          cargo build --release --locked -p zajil-host -p zajil-cli -p zajil-jsbox --target "$t"
+          mkdir -p apps/desktop/src-tauri/binaries
+          for p in zajil-host zajil zajil-jsbox; do
+            cp "target/$t/release/$p.exe" "apps/desktop/src-tauri/binaries/$p-$t.exe"
+          done
+      - name: Install UI dependencies
+        working-directory: apps/desktop
+        run: npm ci --no-audit --no-fund
+      - name: Build distinct Windows preview installer
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          npx tauri build --ci --target x86_64-pc-windows-msvc --bundles nsis \
+            --config ../../scripts/release/tauri.release.json \
+            --config src-tauri/tauri.haitham-preview.json
+      - name: Check installer contents and generate checksums
+        shell: pwsh
+        run: |
+          $dir = 'apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis'
+          $installers = @(Get-ChildItem $dir -Filter '*-setup.exe' -File)
+          if ($installers.Count -ne 1) { throw "Expected exactly one installer, got $($installers.Count)" }
+          $setup = $installers[0]
+          if ($setup.Name -notmatch 'Haitham') { throw 'Installer does not carry the preview identity' }
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash
+          "$hash  $($setup.Name)" | Set-Content -Path "$dir/SHA256SUMS.txt" -Encoding ascii
+          Write-Output "PREVIEW_INSTALLER=$($setup.Name) SHA256=$hash SIZE=$($setup.Length)"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Haitham-Downloader-Preview-Windows
+          path: |
+            apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe
+            apps/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30

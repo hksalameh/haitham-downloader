@@ -1,0 +1,24 @@
+{
+  "productName": "Haitham Downloader Preview",
+  "identifier": "io.github.hksalameh.haithamdownloader.preview",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Haitham Downloader Preview",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 900,
+        "minHeight": 560
+      }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/hksalameh/haitham-downloader/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true
+    }
+  }
+}

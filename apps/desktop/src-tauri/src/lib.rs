@@ -125,10 +125,15 @@ fn data_dir(args: &[String]) -> Result<PathBuf, String> {
     {
         return Ok(PathBuf::from(dir));
     }
-    Ok(SystemPaths::new()
+    let normal = SystemPaths::new()
         .map_err(|e| e.to_string())?
         .data_dir()
-        .to_path_buf())
+        .to_path_buf();
+    // A preview must never read or alter the official Zajil user's queues.
+    if option_env!("HAITHAM_PREVIEW").is_some() {
+        return Ok(normal.with_file_name("haitham-downloader-preview"));
+    }
+    Ok(normal)
 }
 
 /// The first line Zajil says: its release's version (`zajil_core::VERSION`;
@@ -305,7 +310,7 @@ pub fn run() {
             // The browser integration, at each start: idempotent, and a
             // browser installed since then finds Zajil. Not in a ui-test
             // scene, whose files are demo ones.
-            if !in_scene(tauri_app.handle()) {
+            if !in_scene(tauri_app.handle()) && option_env!("HAITHAM_PREVIEW").is_none() {
                 let data = data.clone();
                 let kept = tauri_app.state::<App>().integration.clone();
                 std::thread::spawn(move || {
@@ -1808,6 +1813,10 @@ async fn fix_browser_integration<R: tauri::Runtime>(
     app: State<'_, App>,
     handle: tauri::AppHandle<R>,
 ) -> Result<view::IntegrationView, String> {
+    // Preview builds don't claim the official Zajil extension's native host.
+    if option_env!("HAITHAM_PREVIEW").is_some() {
+        return Err("Browser integration is disabled in the isolated Haitham preview".into());
+    }
     if in_scene(&handle) {
         return Err("a ui-test scene registers nothing".into());
     }

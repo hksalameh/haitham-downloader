@@ -165,7 +165,8 @@ async fn signed_update<R: tauri::Runtime>(handle: &tauri::AppHandle<R>) -> Optio
 /// The check at start, in the background: the window is not kept waiting.
 pub fn check_at_start(handle: &tauri::AppHandle) {
     // A development build is 0.0.0: every release would be newer.
-    if cfg!(debug_assertions) {
+    // The Haitham preview must not update itself into official Zajil.
+    if cfg!(debug_assertions) || option_env!("HAITHAM_PREVIEW").is_some() {
         return;
     }
     let handle = handle.clone();
