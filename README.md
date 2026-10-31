@@ -43,6 +43,7 @@ python -m PyInstaller --noconfirm HaithamDownloader_Classic_420.spec
 ```powershell
 python test_range_connections.py
 python test_dynamic_range_rebalancing.py
+python test_without_aria2.py
 python test_adaptive_retry.py
 python test_connection_telemetry.py
 python test_missing_file.py
