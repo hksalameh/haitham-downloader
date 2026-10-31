@@ -28,6 +28,8 @@ jobs:
         run: python -u test_connection_telemetry.py
       - name: Multipart pause resume and integrity
         run: python -u test_range_connections.py
+      - name: Dynamic segment splitting integrity and restart
+        run: python -u test_dynamic_range_rebalancing.py
       - name: Missing completed file state
         run: python -u test_missing_file.py
       - name: Check Chrome interception script

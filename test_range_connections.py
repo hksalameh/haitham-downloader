@@ -65,7 +65,8 @@ try:
     assert all(s["completed"]==s["size"] for s in detail["ranges"])
     output=p/"test-resume.bin"
     assert output.read_bytes()==DATA
-    assert len(detail["ranges"])==8
+    # Dynamic splitting may append additional nonoverlapping pieces.
+    assert 8<=len(detail["ranges"])<=24
     print("CONNECTIONS",len(detail["ranges"]),"HTTP_REQUESTS",len(calls))
     print("PROGRESS_OBSERVATIONS",observations[:3])
     print("PAUSE_AND_RESTART",pause,"COMPLETED",detail["completed"],"SHA256_MATCH",True)

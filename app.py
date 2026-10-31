@@ -321,7 +321,7 @@ class Service:
             if key in values:safe[key]=values[key]
         if "language" in safe and safe["language"] not in ("ar","en"):raise ValueError("Invalid language")
         if "theme" in safe and safe["theme"] not in ("dark","light"):raise ValueError("Invalid theme")
-        if "connections" in safe:safe["connections"]=max(1,min(16,int(safe["connections"])))
+        if "connections" in safe:safe["connections"]=max(1,min(32,int(safe["connections"])))
         if "concurrent" in safe:safe["concurrent"]=max(1,min(10,int(safe["concurrent"])))
         if "download_dir" in safe:
             p=Path(safe["download_dir"]).expanduser()

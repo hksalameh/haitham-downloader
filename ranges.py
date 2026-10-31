@@ -126,7 +126,12 @@ class AdaptiveRequestGate:
                 self.successes = 0
 
 class RangeManager:
-    def __init__(self, root):
+    # A free worker can take half of a large unfinished range. Bound the
+    # number of extra pieces so a stalled server cannot create unlimited files.
+    MIN_STEAL_BYTES = 1024 * 1024
+    MAX_PART_MULTIPLIER = 3
+
+    def __init__(self, root, enable_work_stealing=True):
         self.root=Path(root)
         self.root.mkdir(parents=True,exist_ok=True)
         self.parts_dir=self.root/"parts"
@@ -135,6 +140,7 @@ class RangeManager:
         self.lock=threading.RLock()
         self.records={}
         self.runtime={}
+        self.enable_work_stealing=enable_work_stealing
         self._load()
 
     def _load(self):
@@ -158,7 +164,7 @@ class RangeManager:
 
     def add(self,url,directory,filename,connections=8,temp_dir=None):
         size=probe(url)
-        count=min(max(1,int(connections)),max(1,size//(1024*1024)))
+        count=min(32,max(1,int(connections)),max(1,size//(1024*1024)))
         step=size//count
         ranges=[]
         for idx in range(count):
@@ -171,6 +177,7 @@ class RangeManager:
         staging_root.mkdir(parents=True,exist_ok=True)
         record={"gid":gid,"url":url,"name":filename,"directory":str(directory),
                 "filepath":str(Path(directory)/filename),"parts_root":str(staging_root),"total":size,
+                "connections":count,
                 "date":time.strftime("%Y-%m-%d %H:%M"),"status":"waiting",
                 "ranges":ranges,"error":""}
         with self.lock:
@@ -193,6 +200,52 @@ class RangeManager:
             completed.append(min(part["size"],size))
         return completed
 
+    def _steal_unfinished_tail(self, rec, active_indices, samples, initial_count):
+        """Reassign unreceived bytes without ever moving or rewriting saved parts.
+
+        Called only after a worker finishes. The original worker may still
+        have an HTTP response open; it checks its mutable boundary before
+        each write. Changes to that boundary and on-disk byte counts share
+        the manager lock, so the two workers cannot write overlapping bytes.
+        """
+        if not self.enable_work_stealing:
+            return None
+        with self.lock:
+            if len(rec["ranges"]) >= initial_count * self.MAX_PART_MULTIPLIER:
+                return None
+            now=time.monotonic()
+            candidates=[]
+            for part in rec["ranges"]:
+                index=part["index"]
+                last=samples.get(index)
+                if index not in active_indices or not last or now-last[0]>3:
+                    continue  # Do not split a connection that has not started.
+                current=self._part(rec["gid"],index)
+                try: written=current.stat().st_size
+                except FileNotFoundError: continue
+                remaining=part["size"]-written
+                if remaining >= self.MIN_STEAL_BYTES * 2:
+                    candidates.append((remaining,part,written))
+            if not candidates:
+                return None
+            remaining,part,written=max(candidates,key=lambda c:c[0])
+            cut=part["start"]+written+remaining//2
+            old_end=part["end"]
+            new_index=max(p["index"] for p in rec["ranges"])+1
+            new_part={"index":new_index,"start":cut,"end":old_end,
+                      "size":old_end-cut+1}
+            part["end"]=cut-1
+            part["size"]=cut-part["start"]
+            rec["ranges"].append(new_part)
+            try:
+                self._save()  # A restart must see the new, nonoverlapping map.
+            except Exception:
+                rec["ranges"].pop()
+                part["end"]=old_end
+                part["size"]=old_end-part["start"]+1
+                raise
+            return new_part
+
     def resume(self,gid):
         with self.lock:
             rec=self.records[gid]
@@ -202,8 +255,9 @@ class RangeManager:
                 raise RuntimeError("Previous connections are stopping; retry")
             if rec["status"]=="complete":return
             cancel=threading.Event()
+            configured=max(1,min(32,int(rec.get("connections",len(rec["ranges"])))))
             runtime={"cancel":cancel,"samples":{},"worker":None,
-                     "gate":AdaptiveRequestGate(len(rec["ranges"]))}
+                     "gate":AdaptiveRequestGate(configured)}
             self.runtime[gid]=runtime
             rec["status"]="active";rec["error"]=""
             thread=threading.Thread(target=self._download,args=(gid,runtime),daemon=True,name=gid)
@@ -219,31 +273,42 @@ class RangeManager:
         written=local.stat().st_size if local.exists() else 0
         if written>size:raise RuntimeError("Existing partial file exceeds its range")
         retries=0
-        while written<size and not cancel.is_set():
+        while written<r["size"] and not cancel.is_set():
             # The gate coordinates new requests across ALL ranges in this download.
             if not gate.acquire(cancel):
                 break
+            # Snapshot this request's end. Another worker may take its tail
+            # while this response is still streaming; the writer below clips.
             begin=r["start"]+written
+            requested_end=r["end"]
             request=Request(rec["url"],headers={
-                "Range":f"bytes={begin}-{r['end']}",
+                "Range":f"bytes={begin}-{requested_end}",
                 "User-Agent":"HaithamDownloader/4.1"})
             try:
                 with urlopen(request,timeout=15) as reply:
                     actual=reply.headers.get("Content-Range","")
                     m=re.match(r"^bytes\s+(\d+)-(\d+)/(\d+)$",actual)
-                    if reply.status!=206 or not m or tuple(map(int,m.groups()))!=(begin,r["end"],rec["total"]):
+                    if reply.status!=206 or not m or tuple(map(int,m.groups()))!=(begin,requested_end,rec["total"]):
                         raise RuntimeError(f"Server returned inconsistent range: {actual}")
                     with local.open("ab") as output:
-                        while not cancel.is_set() and written<size:
-                            block=reply.read(min(65536,size-written))
-                            if not block:raise OSError("Connection ended early")
-                            output.write(block)
-                            written+=len(block)
+                        while not cancel.is_set():
                             with self.lock:
+                                left=r["size"]-written
+                            if left<=0:break
+                            block=reply.read(min(65536,left))
+                            if not block:raise OSError("Connection ended early")
+                            with self.lock:
+                                # A split may have moved the boundary while
+                                # read() waited for the network. Never write
+                                # any byte the newly started range owns.
+                                accepted=block[:max(0,r["size"]-written)]
+                                if not accepted:break
+                                output.write(accepted)
+                                written+=len(accepted)
                                 samples[r["index"]]=(time.monotonic(),written)
-                            gate.record_bytes(len(block))
+                            gate.record_bytes(len(accepted))
                 retries=0
-                if written>=size:
+                if written>=r["size"]:
                     gate.successful_range()
             except HTTPError as exc:
                 if cancel.is_set():break
@@ -263,27 +328,51 @@ class RangeManager:
                 gate.release()
 
     def _download(self,gid,runtime):
-        from concurrent.futures import ThreadPoolExecutor,as_completed
+        from concurrent.futures import ThreadPoolExecutor,wait,FIRST_COMPLETED
         rec=self.records[gid]
         cancel=runtime["cancel"]
         try:
-            with ThreadPoolExecutor(max_workers=len(rec["ranges"]),thread_name_prefix="HDM") as pool:
-                futures=[pool.submit(self._download_one,rec,r,cancel,runtime["samples"],runtime["gate"]) for r in rec["ranges"]]
-                for f in as_completed(futures):
-                    try:f.result()
-                    except Exception:
-                        cancel.set()
-                        raise
+            configured=max(1,min(32,int(rec.get("connections",len(rec["ranges"])))))
+            with ThreadPoolExecutor(max_workers=configured,thread_name_prefix="HDM") as pool:
+                futures={pool.submit(self._download_one,rec,r,cancel,runtime["samples"],runtime["gate"]):r
+                         for r in list(rec["ranges"])}
+                while futures:
+                    finished,_=wait(futures,return_when=FIRST_COMPLETED)
+                    for f in finished:
+                        try:f.result()
+                        except Exception:
+                            cancel.set()
+                            raise
+                    for f in finished:
+                        futures.pop(f)
+                    if cancel.is_set():break
+                    for _ in finished:
+                        new=self._steal_unfinished_tail(rec,
+                            {r["index"] for r in futures.values()},runtime["samples"],configured)
+                        if new is not None:
+                            futures[pool.submit(self._download_one,rec,new,cancel,
+                                                runtime["samples"],runtime["gate"])]=new
             if cancel.is_set():return
             parts=self._completed(rec)
             if any(parts[i]!=r["size"] for i,r in enumerate(rec["ranges"])):
                 raise RuntimeError("One or more segments ended without all bytes")
+            # Rebalanced pieces are appended in completion order, *not* in
+            # their position in the original file. Verify the map is a
+            # contiguous partition, then merge in absolute-byte order.
+            ordered=sorted(rec["ranges"],key=lambda r:r["start"])
+            offset=0
+            for part in ordered:
+                if part["start"]!=offset or part["size"]!=part["end"]-part["start"]+1:
+                    raise RuntimeError("Segment map contains a gap or overlap")
+                offset=part["end"]+1
+            if offset!=rec["total"]:
+                raise RuntimeError("Segment map does not cover full file")
             target=Path(rec["filepath"])
             merge=target.with_name(target.name+".hdm-merging")
             if target.exists():raise FileExistsError("Target appeared while downloading")
             try:
                 with merge.open("wb") as out:
-                    for r in rec["ranges"]:
+                    for r in ordered:
                         with self._part(gid,r["index"]).open("rb") as source:
                             shutil.copyfileobj(source,out,1024*1024)
                 if merge.stat().st_size!=rec["total"]:raise RuntimeError("Merged file size mismatch")

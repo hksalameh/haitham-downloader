@@ -148,11 +148,11 @@ async function action(type,ids,more={}){
 function closeDetail(){UI.detailsId=null;UI.detailsSnapshot=null;$("details-window").hidden=true}
 function openDetails(gid){UI.detailsId=gid;$("details-window").hidden=false;refreshDetails()}
 function fileMapConnections(segments){
- return segments.map(s=>{const p=s.size?Math.min(100,Math.max(0,s.completed/s.size*100)):0;
+ return [...segments].sort((a,b)=>a.start-b.start).map(s=>{const p=s.size?Math.min(100,Math.max(0,s.completed/s.size*100)):0;
  return `<div class="map-range ${p<100&&p>0?"is-working":""}" title="${esc(String(s.index))}: ${size(s.completed)} / ${size(s.size)}"><div class="done" style="width:${p}%"></div></div>`}).join("")
 }
 function rowsConnections(segments){
- return segments.map(s=>{
+ return [...segments].sort((a,b)=>a.start-b.start).map(s=>{
  const p=s.size?Math.max(0,Math.min(100,s.completed/s.size*100)):0;
  return `<div class="conn-row"><span class="conn-range"><b>${s.index}</b><small>${size(s.start)} — ${size(s.end)} [HTTP Range]</small></span>
  <span class="conn-value">${size(s.completed)} / ${size(s.size)}</span><span class="conn-value">${size(s.speed)}/s</span>
