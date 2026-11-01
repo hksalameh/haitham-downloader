@@ -1,10 +1,10 @@
-# Zajil interface strings in English (Fluent, https://projectfluent.org).
+# Haitham Downloader interface strings in English (Fluent, https://projectfluent.org).
 # Every key here exists in ar/zajil.ftl with the same variables, checked by
 # crates/zajil-i18n/tests/translations.rs.
 # Counted messages select on PLURAL($count), not on $count: PLURAL returns
 # the CLDR category, the same in Rust and in the GUI (see ar/zajil.ftl).
 
-app-name = Zajil
+app-name = Haitham Downloader
 
 ## Counts
 
@@ -172,7 +172,7 @@ details-speed-chart = Speed over the last minute
 details-chart-then = A minute ago
 details-chart-now = Now
 details-failed = The download stopped: { $error }
-details-open-browser = This download came from the browser with its cookies, and Zajil does not keep cookies. Open the browser (and the same profile) it came from: Zajil takes them from it and goes on by itself. If that browser is gone, go on without the cookies.
+details-open-browser = This download came from the browser with its cookies, and Haitham Downloader does not keep cookies. Open the browser (and the same profile) it came from: Haitham Downloader takes them from it and goes on by itself. If that browser is gone, go on without the cookies.
 details-without-cookies = Go on without cookies
 details-needs-ok = This file can run programs on your computer (a program, an installer, a script or an Office file with macros), and it came from a page in the browser, so it will not download until you start it. Start it only if you trust the site.
 
@@ -180,7 +180,7 @@ details-needs-ok = This file can run programs on your computer (a program, an in
 
 refresh-action = Refresh link
 refresh-title = Refresh the download link
-refresh-hint = If the link expired, get a new link to the same file from the site and paste it here. Zajil makes sure it is the same file, then goes on from where it stopped.
+refresh-hint = If the link expired, get a new link to the same file from the site and paste it here. Haitham Downloader makes sure it is the same file, then goes on from where it stopped.
 refresh-url = New link
 refresh-cancel = Cancel
 refresh-go = Refresh and go on
@@ -189,13 +189,13 @@ refresh-stopping = The download is still stopping. Wait a moment, then try again
 refresh-busy = This download's link is already being refreshed.
 refresh-cancelled = The refresh was given up; the download did not change.
 refresh-done = This download has finished: it needs no new link.
-refresh-bad-link = Zajil does not take this link: it must start with http or https, without a user name or password.
+refresh-bad-link = Haitham Downloader does not take this link: it must start with http or https, without a user name or password.
 refresh-size = The new link is to another file: its size is { $theirs }, this download's { $ours }.
-refresh-size-unknown = The size of the new file or of this download is unknown, so Zajil cannot be sure it is the same file.
-refresh-version = The new link is to another version of the file, so Zajil will not go on from it, not to spoil the file.
-refresh-validator-kind = The server describes the new file differently, so Zajil cannot be sure it is the same file.
-refresh-new-no-validator = The new link's server gives nothing Zajil can check that it is the same file with.
-refresh-no-validator = This download's server gave nothing Zajil can check the file with, so its link cannot be refreshed. Start a new download from the new link.
+refresh-size-unknown = The size of the new file or of this download is unknown, so Haitham Downloader cannot be sure it is the same file.
+refresh-version = The new link is to another version of the file, so Haitham Downloader will not go on from it, not to spoil the file.
+refresh-validator-kind = The server describes the new file differently, so Haitham Downloader cannot be sure it is the same file.
+refresh-new-no-validator = The new link's server gives nothing Haitham Downloader can check that it is the same file with.
+refresh-no-validator = This download's server gave nothing Haitham Downloader can check the file with, so its link cannot be refreshed. Start a new download from the new link.
 refresh-failed = The link was not refreshed.
 
 ## Settings
@@ -220,22 +220,22 @@ settings-limit-hint = For all downloads together.
 settings-limit-none = None
 settings-limit-set = Set a speed
 settings-autostart = When the computer starts
-settings-autostart-label = Start Zajil with the computer
+settings-autostart-label = Start Haitham Downloader with the computer
 settings-autostart-failed = Starting with the computer could not be changed.
 settings-notifications = Notifications
 settings-notifications-label = Tell me when a download finishes or fails
 settings-browser = Browser
-settings-browser-hint = Zajil registers itself with Chrome, Edge, Brave, Opera, Vivaldi, Chromium and Firefox at each start, installed or not, so its extension can reach it. This button registers again and says how it went.
+settings-browser-hint = Haitham Downloader registers itself with Chrome, Edge, Brave, Opera, Vivaldi, Chromium and Firefox at each start, installed or not, so its extension can reach it. This button registers again and says how it went.
 settings-browser-fix = Fix the browser integration
 settings-browser-ok = { $browser }: registered
 settings-browser-failed = { $browser }: not registered ({ $error })
-settings-browser-missing = zajil-host was not found next to the program, so no browser can reach Zajil.
-settings-browser-temporary = The program runs from a place that goes away when it closes (macOS moved it aside), so no browser was registered. Move Zajil into the Applications folder.
-settings-browser-unsafe = Another user could change zajil-host or its folder, so no browser was registered.
+settings-browser-missing = browser helper was not found next to the program, so no browser can reach Haitham Downloader.
+settings-browser-temporary = The program runs from a place that goes away when it closes (macOS moved it aside), so no browser was registered. Move Haitham Downloader into the Applications folder.
+settings-browser-unsafe = Another user could change browser helper or its folder, so no browser was registered.
 settings-browser-working = Registering…
 settings-clipboard = Clipboard
 settings-clipboard-label = Watch the clipboard and put the download links I copy in the add box
-settings-clipboard-hint = Zajil looks at the clipboard twice a second for a link to a file, and keeps nothing of it. It does not contact the link or add anything before you press OK in «Add a link».
+settings-clipboard-hint = Haitham Downloader looks at the clipboard twice a second for a link to a file, and keeps nothing of it. It does not contact the link or add anything before you press OK in «Add a link».
 settings-export = Export queues
 settings-import = Import queues
 settings-export-warning = The file holds the links as they are, and some may contain temporary access keys. Do not share it.
@@ -259,10 +259,10 @@ categories-delete = Delete category
 
 ## System tray
 
-tray-open = Open Zajil
+tray-open = Open Haitham Downloader
 tray-pause-all = Pause all
 tray-resume-all = Resume all
-tray-quit = Quit Zajil
+tray-quit = Quit Haitham Downloader
 
 ## Notifications
 
@@ -375,11 +375,11 @@ cmd-open-folder = Open folder
 cmd-progress = Progress window
 cmd-refresh-link = Refresh link…
 cmd-properties = Properties
-cmd-about = About Zajil
+cmd-about = About Haitham Downloader
 cmd-move-to-queue = Add to queue
-about-text = Zajil, version { $version }
+about-text = Haitham Downloader, version { $version }
 about-copy-problem = Copy problem info
-about-copied-problem = The problem info is copied: Zajil's version, the system, the video tools and the log's last lines, with no link. Paste it with what went wrong wherever you ask for help: the project's GitHub page, a comment or a message.
+about-copied-problem = The problem info is copied: Haitham Downloader's version, the system, the video tools and the log's last lines, with no link. Paste it with what went wrong wherever you ask for help: the project's GitHub page, a comment or a message.
 about-copy-failed = Could not copy to the clipboard.
 table-label = Downloads
 col-resize = { $column } column width
@@ -415,10 +415,10 @@ add-remember-failed = The download was added, but the folder wasn't kept for the
 ## Quit with downloads running (owner's decision on #83)
 quit-question =
     { PLURAL($count) ->
-        [one] { $count } download is running. Quit Zajil?
-       *[other] { $count } downloads are running. Quit Zajil?
+        [one] { $count } download is running. Quit Haitham Downloader?
+       *[other] { $count } downloads are running. Quit Haitham Downloader?
     }
-quit-ok = Quit Zajil
+quit-ok = Quit Haitham Downloader
 
 ## الجدولة
 
@@ -456,7 +456,7 @@ schedule-after = When the queue is done
 schedule-after-nothing = Nothing
 schedule-after-shutdown = Shut down the computer
 schedule-after-sleep = Sleep
-schedule-after-hint = For this run only, never saved. Zajil counts down a minute first, which you can cancel.
+schedule-after-hint = For this run only, never saved. Haitham Downloader counts down a minute first, which you can cancel.
 schedule-countdown-shutdown = The queue is done. The computer shuts down in:
 schedule-countdown-sleep = The queue is done. The computer goes to sleep in:
 schedule-countdown-cancel = Cancel
@@ -475,7 +475,7 @@ schedule-tries = Tries per file
 schedule-after-open = And open a file or program after it:
 schedule-after-open-pick = Choose a file…
 schedule-after-open-clear = Remove
-schedule-after-open-confirm = Zajil will open this file or program each time every download of this queue is done. Save it only if you trust it.
+schedule-after-open-confirm = Haitham Downloader will open this file or program each time every download of this queue is done. Save it only if you trust it.
 schedule-after-open-ok = Save it
 
 ## الاكتمال
@@ -495,13 +495,13 @@ complete-drag-hint = Drag the file from here into any program or folder
 
 ## التحديث
 
-update-available = A new version of Zajil is available:
+update-available = A new version of Haitham Downloader is available:
 update-release-page = Release page
 update-dismiss = Hide until the next start
 update-install = Update now
-extension-old = The browser extension is old: update it for everything Zajil does to work with it. Its version:
+extension-old = The browser extension is old: update it for everything Haitham Downloader does to work with it. Its version:
 extension-old-help = How to update it
-update-install-hint = Downloads save their progress and stop, Zajil is updated and opens again, and they continue.
+update-install-hint = Downloads save their progress and stop, Haitham Downloader is updated and opens again, and they continue.
 update-skip = Skip this version
 update-downloading = Downloading the update…
 update-failed = The update could not be installed. Download it from the release page.
@@ -530,18 +530,18 @@ sites-too-many = The list is longer than allowed.
 video-soon = Video downloads are coming soon.
 
 ## The main window's title bar (the design of #83)
-app-title = Zajil Download Manager
+app-title = Haitham Downloader Download Manager
 win-minimize = Minimize
 win-maximize = Maximize
 win-restore = Restore
 win-close = Close
 
 ## Closing the window (owner's decision, after #105)
-tray-still-running = Zajil is still running in the system tray, and the downloads go on. Choose “Quit Zajil” from its icon to quit.
+tray-still-running = Haitham Downloader is still running in the system tray, and the downloads go on. Choose “Quit Haitham Downloader” from its icon to quit.
 settings-closing = Closing the window
-settings-closing-label = Closing the window quits Zajil
-settings-closing-hint = Without this, the window hides and Zajil stays in the system tray while the downloads go on.
-settings-closing-no-tray = This desktop shows no system tray, so closing the window always quits Zajil (asking first while downloads run).
+settings-closing-label = Closing the window quits Haitham Downloader
+settings-closing-hint = Without this, the window hides and Haitham Downloader stays in the system tray while the downloads go on.
+settings-closing-no-tray = This desktop shows no system tray, so closing the window always quits Haitham Downloader (asking first while downloads run).
 
 ## M5.5: the progress window (design window 4)
 progress-title = Download progress
@@ -605,7 +605,7 @@ drop-box = Drop box
 drop-hint = Drag a link here to download it. Right-click it for a batch download, or to hide it.
 tray-drop-box = Show the drop box
 settings-drop-box-label = Show the drop box above all windows
-settings-drop-box-hint = A small box with Zajil's mark: drag a link from the browser onto it to open “Download file info”. Drag it to move it; right-click it for a batch download, or to hide it.
+settings-drop-box-hint = A small box with Haitham Downloader's mark: drag a link from the browser onto it to open “Download file info”. Drag it to move it; right-click it for a batch download, or to hide it.
 
 ## The table's queue column, «Remove from queue», and deleting what has not finished (M5.5)
 col-queue = Queue
@@ -627,12 +627,12 @@ cmd-video = Download a video…
 video-title = Video quality
 video-page = The video page's link
 video-consent-title = Video tools
-video-consent-why = To download videos, Zajil needs a few free, open-source tools (QuickJS-NG is for YouTube's videos). Nothing is downloaded before you agree.
+video-consent-why = To download videos, Haitham Downloader needs a few free, open-source tools (QuickJS-NG is for YouTube's videos). Nothing is downloaded before you agree.
 video-tool = Tool
 video-version = Version
 video-source = Source
 video-license = License
-video-consent-note = They are kept in Zajil's data folder, and each file's fingerprint is checked before it runs. You can delete them from the settings.
+video-consent-note = They are kept in Haitham Downloader's data folder, and each file's fingerprint is checked before it runs. You can delete them from the settings.
 video-consent-ok = OK, download the tools
 video-installing = Downloading the video tools…
 video-probing = Asking the page about the video…
@@ -653,19 +653,19 @@ video-open-playlist = Open
 video-playlists-only = These are playlists: open each one to choose its videos.
 video-error-playlist = This link is a playlist, not a video. Open it in «Video quality» to choose from it.
 video-done = The video has downloaded.
-video-drm = This video is protected, and Zajil does not download protected content.
+video-drm = This video is protected, and Haitham Downloader does not download protected content.
 video-tools-missing = The video tools are not downloaded or have changed. Download them in Settings › Video tools, or download the video again.
 video-not-quicktime = Won’t play in QuickTime
 video-tools-not-ready = yt-dlp was downloaded but did not start, so the video tools are not ready. Try again, and if it happens again, tell us what «Details» says.
-video-error-no_formats = Zajil found no quality it can download for this video. Try again in a little while.
+video-error-no_formats = Haitham Downloader found no quality it can download for this video. Try again in a little while.
 video-error-sign_in = This video opens only when signed in to its site. Sign in in the browser and let the extension send cookies, then try again.
 video-error-private = This video is private: only those its owner allowed can see it.
-video-error-unsupported = Zajil knows no way to download videos from this site.
-video-error-challenge = Zajil could not pass YouTube's check for this video. Try again in a little while.
+video-error-unsupported = Haitham Downloader knows no way to download videos from this site.
+video-error-challenge = Haitham Downloader could not pass YouTube's check for this video. Try again in a little while.
 video-error-other = This video could not be downloaded.
 video-error-other-details = This video could not be downloaded. Details: { $details }
 video-error-details = Details
-video-started-reading = Zajil is reading the video…
+video-started-reading = Haitham Downloader is reading the video…
 video-size = Size
 
 ## Video downloads in the list (M6, #149)
@@ -673,7 +673,7 @@ queue-video = Video
 
 ## Video tools in the settings and «About» (M6, #149)
 settings-video-tools = Video tools
-settings-video-tools-hint = They are downloaded with your agreement the first time you download a video, or from here, and kept in Zajil's data folder.
+settings-video-tools-hint = They are downloaded with your agreement the first time you download a video, or from here, and kept in Haitham Downloader's data folder.
 settings-video-tools-ready = Ready
 settings-video-tools-missing = Not downloaded
 settings-video-tools-remove = Delete the video tools
@@ -686,14 +686,14 @@ settings-finish-hint = What a download's window does when it finishes, for every
 settings-video-tools-install = Download the video tools
 settings-video-tools-installing = Downloading { $tool }… { $percent }
 settings-video-tools-installed = The video tools are ready.
-about-video-tools = Zajil downloads videos with free tools, downloaded from their sources:
+about-video-tools = Haitham Downloader downloads videos with free tools, downloaded from their sources:
 about-ffmpeg = This software uses libraries from the FFmpeg project under the { $license }.
 about-tool = { $tool } { $version }, under the { $license }. Its source: { $source }
 about-tool-or-later = { $tool } { $version }, under the { $license } or later. Its source: { $source }
-about-tool-yt-dlp = { $tool } { $version }, under the { $binary } for the file Zajil downloads (its source code: { $license }). Its source: { $source }
+about-tool-yt-dlp = { $tool } { $version }, under the { $binary } for the file Haitham Downloader downloads (its source code: { $license }). Its source: { $source }
 about-or-later = { $license } or later
-about-not-ours = Zajil does not own these tools; they belong to their projects:
-tool-license-yt-dlp = { $binary } for the file Zajil downloads (its source code: { $source })
+about-not-ours = Haitham Downloader does not own these tools; they belong to their projects:
+tool-license-yt-dlp = { $binary } for the file Haitham Downloader downloads (its source code: { $source })
 
 ## Sounds (M5.5)
 settings-sounds = Sounds
@@ -782,20 +782,20 @@ grab-extensions = Other extensions
 grab-extensions-hint = Separated by commas, such as { $example }.
 grab-sites-on = Allow other sites than the start page's
 grab-sites-hint = The site's name only, separated by commas, such as { $example }.
-grab-robots = Zajil respects the site's robots.txt.
+grab-robots = Haitham Downloader respects the site's robots.txt.
 grab-limits = Limits
 grab-max-files = Most files
 grab-max-total = Most in all, in GB
 grab-files-hint = { $default } by default, at most { $max }.
 grab-total-hint = { $default } by default.
 grab-check = Check
-grab-checking = Zajil is checking the site, one request a second…
+grab-checking = Haitham Downloader is checking the site, one request a second…
 grab-progress = Pages: { $pages }, files: { $files }
 grab-stop = Stop checking
 grab-chosen = Chosen: { $chosen } of { $all }
 grab-select-all = Select all
 grab-select-none = Select none
-grab-none = Zajil found no files of the types asked for.
+grab-none = Haitham Downloader found no files of the types asked for.
 grab-robots-closed = The site's robots.txt does not allow checking it.
 grab-skipped = Links left out: { $skipped } (outside the site, not a type asked for, or kept out by robots.txt).
 grab-limit-files = The check reached the most files; the site may have more.
@@ -832,7 +832,7 @@ settings-proxy = Proxy
 settings-proxy-none = No proxy
 settings-proxy-use = Use this proxy
 settings-proxy-save = Save
-settings-proxy-saved = Saved. It applies the next time Zajil starts.
+settings-proxy-saved = Saved. It applies the next time Haitham Downloader starts.
 settings-proxy-hint = Write it as http://host:port. Every download goes through it, and sites' certificates are still checked. A user name or password in it is not accepted.
-settings-logins-hint = Zajil uses your browser's logins (cookies) for every download the extension sends, and saves no passwords. If a download from a site you are logged in to does not arrive, fix the browser link here.
+settings-logins-hint = Haitham Downloader uses your browser's logins (cookies) for every download the extension sends, and saves no passwords. If a download from a site you are logged in to does not arrive, fix the browser link here.
 settings-types-hint = Categories tell each file's type from its extension or its site, with a folder for each type. Change them in the categories editor.
