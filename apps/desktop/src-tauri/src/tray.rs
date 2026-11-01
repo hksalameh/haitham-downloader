@@ -12,7 +12,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-const ID: &str = "zajil";
+const ID: &str = "haitham-downloader";
 
 fn menu<R: Runtime, M: Manager<R>>(
     app: &M,
@@ -31,8 +31,8 @@ fn menu<R: Runtime, M: Manager<R>>(
 /// the chosen language.
 pub fn build<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
     let tray = TrayIconBuilder::with_id(ID)
-        .menu(&menu(app, "افتح زاجِل", "إظهار سلة الإسقاط", "إنهاء زاجِل")?)
-        .tooltip("Zajil")
+        .menu(&menu(app, "افتح مدير تحميل هيثم", "إظهار سلة الإسقاط", "إنهاء مدير تحميل هيثم")?)
+        .tooltip("Haitham Downloader")
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_window(app),
