@@ -162,7 +162,7 @@
   }
 
   async function exportQueues() {
-    const path = await saveDialog({ defaultPath: "zajil-queues.json", filters: [{ name: "JSON", extensions: ["json"] }] });
+    const path = await saveDialog({ defaultPath: "haitham-downloader-queues.json", filters: [{ name: "JSON", extensions: ["json"] }] });
     if (!path) return;
     try {
       await api.exportQueues(path);
