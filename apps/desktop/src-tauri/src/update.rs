@@ -54,9 +54,9 @@ pub struct UpdateProgressView {
 
 /// The newest release's update manifest (ADR-0011).
 const MANIFEST: &str =
-    "https://github.com/motalim-ai/zajil-download-manager/releases/latest/download/latest.json";
+    "https://github.com/hksalameh/haitham-downloader/releases/latest/download/latest.json";
 /// The only place an update's file may come from.
-const DOWNLOADS: &str = "https://github.com/motalim-ai/zajil-download-manager/releases/download/";
+const DOWNLOADS: &str = "https://github.com/hksalameh/haitham-downloader/releases/download/";
 
 /// The project's two public keys (ADR-0011, section 3), as `tauri signer
 /// generate` writes them: the signing key, then the offline emergency key.
@@ -281,7 +281,7 @@ pub fn open_extension_help<R: tauri::Runtime>(handle: tauri::AppHandle<R>) -> Re
     handle
         .opener()
         .open_url(
-            "https://github.com/motalim-ai/zajil-download-manager/releases/latest",
+            "https://github.com/hksalameh/haitham-downloader/releases/latest",
             None::<&str>,
         )
         .map_err(|e| e.to_string())
@@ -395,7 +395,7 @@ mod tests {
     fn release() -> NewRelease {
         NewRelease {
             version: "0.2.0".into(),
-            page: "https://github.com/motalim-ai/zajil-download-manager/releases/tag/v0.2.0".into(),
+            page: "https://github.com/hksalameh/haitham-downloader/releases/tag/v0.2.0".into(),
         }
     }
 
