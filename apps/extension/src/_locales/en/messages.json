@@ -1,27 +1,27 @@
 {
   "extensionName": {
-    "message": "Zajil"
+    "message": "Haitham Downloader"
   },
   "extensionDescription": {
-    "message": "Sends your downloads to the Zajil download manager, to download them faster and resume them when they stop."
+    "message": "Sends your downloads to the Haitham Downloader download manager, to download them faster and resume them when they stop."
   },
   "menuDownloadLink": {
-    "message": "Download with Zajil"
+    "message": "Download with Haitham Downloader"
   },
   "notRefused": {
-    "message": "Zajil did not take this download, so the browser went on with it."
+    "message": "Haitham Downloader did not take this download, so the browser went on with it."
   },
   "notAnswered": {
-    "message": "Zajil did not answer in time. The download is paused in the browser, since Zajil may have it: look in Zajil before you resume it here."
+    "message": "Haitham Downloader did not answer in time. The download is paused in the browser, since Haitham Downloader may have it: look in Haitham Downloader before you resume it here."
   },
   "notReachable": {
-    "message": "The browser cannot reach Zajil, so it went on with the download. Install Zajil, or open its settings and choose “Fix the browser integration”."
+    "message": "The browser cannot reach Haitham Downloader, so it went on with the download. Install Haitham Downloader, or open its settings and choose “Fix the browser integration”."
   },
   "optionsTitle": {
-    "message": "Zajil settings"
+    "message": "Haitham Downloader settings"
   },
   "optionsCapture": {
-    "message": "Send downloads to Zajil"
+    "message": "Send downloads to Haitham Downloader"
   },
   "optionsExtensions": {
     "message": "File types"
@@ -57,76 +57,76 @@
     "message": "en"
   },
   "notAnsweredRunning": {
-    "message": "Zajil did not answer in time and may have taken the download, while the browser goes on with it too: look in Zajil, and cancel one of them if it is there twice."
+    "message": "Haitham Downloader did not answer in time and may have taken the download, while the browser goes on with it too: look in Haitham Downloader, and cancel one of them if it is there twice."
   },
   "menuRefused": {
-    "message": "Zajil did not take this link."
+    "message": "Haitham Downloader did not take this link."
   },
   "menuNotAnswered": {
-    "message": "Zajil did not answer in time, and may have taken the link: look in Zajil."
+    "message": "Haitham Downloader did not answer in time, and may have taken the link: look in Haitham Downloader."
   },
   "menuNotReachable": {
-    "message": "The browser cannot reach Zajil. Install Zajil, or open its settings and choose “Fix the browser integration”."
+    "message": "The browser cannot reach Haitham Downloader. Install Haitham Downloader, or open its settings and choose “Fix the browser integration”."
   },
   "menuNotALink": {
-    "message": "This is not a link to a file Zajil can download."
+    "message": "This is not a link to a file Haitham Downloader can download."
   },
   "takenAlsoInBrowser": {
-    "message": "Zajil took the download, but the browser had finished it too: the file is there twice, so remove one if you like."
+    "message": "Haitham Downloader took the download, but the browser had finished it too: the file is there twice, so remove one if you like."
   },
   "welcomeTitle": {
-    "message": "Welcome to Zajil"
+    "message": "Welcome to Haitham Downloader"
   },
   "welcomeIntro": {
-    "message": "Downloads of the file types you choose in the settings now go to the Zajil download manager, to download them faster and resume them when they stop. And in the right-click menu on any link: “Download with Zajil”, and on any video: “Download video with Zajil”."
+    "message": "Downloads of the file types you choose in the settings now go to the Haitham Downloader download manager, to download them faster and resume them when they stop. And in the right-click menu on any link: “Download with Haitham Downloader”, and on any video: “Download video with Haitham Downloader”."
   },
   "cookiesTitle": {
-    "message": "Zajil on sites: cookies and video (optional)"
+    "message": "Haitham Downloader on sites: cookies and video (optional)"
   },
   "cookiesWhy": {
-    "message": "One permission for two things. Cookies: some sites give their files only to signed-in users, and for Zajil to download those the extension reads the download link's cookies. Video: a “Download video” button over a page's videos, and noting the addresses of the video playlists (HLS and DASH) the page loads."
+    "message": "One permission for two things. Cookies: some sites give their files only to signed-in users, and for Haitham Downloader to download those the extension reads the download link's cookies. Video: a “Download video” button over a page's videos, and noting the addresses of the video playlists (HLS and DASH) the page loads."
   },
   "cookiesOnlyHere": {
-    "message": "The cookies go to the Zajil program on this computer, and from it to their own site only, nowhere else."
+    "message": "The cookies go to the Haitham Downloader program on this computer, and from it to their own site only, nowhere else."
   },
   "cookiesOnlyThisSite": {
-    "message": "For each download: only its link's site cookies, for its link only, and only when it goes to Zajil. For a video, its page's cookies, when you press or when the video button shows over it. No cookies from a private window."
+    "message": "For each download: only its link's site cookies, for its link only, and only when it goes to Haitham Downloader. For a video, its page's cookies, when you press or when the video button shows over it. No cookies from a private window."
   },
   "cookiesNotKept": {
-    "message": "Zajil does not write them to disk: they stay in memory until the download finishes or is removed. Except for a video: yt-dlp reads them from a temporary file in Zajil's data folder, deleted when it ends."
+    "message": "Haitham Downloader does not write them to disk: they stay in memory until the download finishes or is removed. Except for a video: yt-dlp reads them from a temporary file in Haitham Downloader's data folder, deleted when it ends."
   },
   "cookiesOptional": {
-    "message": "Without the permission the extension works as it is: files of sites that need a sign-in stay in the browser, and for videos there is “Download video with Zajil” in the right-click menu. You can take the permission back at any time in the settings."
+    "message": "Without the permission the extension works as it is: files of sites that need a sign-in stay in the browser, and for videos there is “Download video with Haitham Downloader” in the right-click menu. You can take the permission back at any time in the settings."
   },
   "cookiesAllow": {
-    "message": "Allow Zajil on sites"
+    "message": "Allow Haitham Downloader on sites"
   },
   "cookiesDrop": {
     "message": "Take the permission back"
   },
   "cookiesAllowed": {
-    "message": "Allowed: a download link's cookies go to Zajil with its download, and the “Download video” button shows over videos."
+    "message": "Allowed: a download link's cookies go to Haitham Downloader with its download, and the “Download video” button shows over videos."
   },
   "cookiesNotAllowed": {
-    "message": "Not allowed: downloads go to Zajil without cookies, and videos have the right-click menu only."
+    "message": "Not allowed: downloads go to Haitham Downloader without cookies, and videos have the right-click menu only."
   },
   "signInNeedsCookies": {
-    "message": "This site needs a sign-in, so the browser went on with the download. For Zajil to take downloads like this, choose “Allow Zajil on sites”."
+    "message": "This site needs a sign-in, so the browser went on with the download. For Haitham Downloader to take downloads like this, choose “Allow Haitham Downloader on sites”."
   },
   "signInEvenWithCookies": {
-    "message": "This site refused Zajil even with the cookies, so the browser went on with the download."
+    "message": "This site refused Haitham Downloader even with the cookies, so the browser went on with the download."
   },
   "menuSignInNeedsCookies": {
-    "message": "This site needs a sign-in. Choose “Allow Zajil on sites” for Zajil to download it, or download it with the browser."
+    "message": "This site needs a sign-in. Choose “Allow Haitham Downloader on sites” for Haitham Downloader to download it, or download it with the browser."
   },
   "menuSignInEvenWithCookies": {
-    "message": "This site refused Zajil even with the cookies. Download it with the browser."
+    "message": "This site refused Haitham Downloader even with the cookies. Download it with the browser."
   },
   "downloadWithBrowser": {
     "message": "Download with the browser"
   },
   "cookiesPrompt": {
-    "message": "The browser will say the extension asks to “Read and change all your data on all websites” or to “Access your data for all websites”: that is what it calls this permission, as each site's cookies and videos need that site's permission. The extension reads only the download link's cookies, where the videos are and their addresses, their playlists' addresses, and the address of a link you click with Zajil's keys; never the pages' text or what you type in them."
+    "message": "The browser will say the extension asks to “Read and change all your data on all websites” or to “Access your data for all websites”: that is what it calls this permission, as each site's cookies and videos need that site's permission. The extension reads only the download link's cookies, where the videos are and their addresses, their playlists' addresses, and the address of a link you click with Haitham Downloader's keys; never the pages' text or what you type in them."
   },
   "signInNoCookies": {
     "message": "This site needs a sign-in, and no cookies went (the browser gave none for this link), so the browser went on with the download."
@@ -135,34 +135,34 @@
     "message": "This site needs a sign-in, and no cookies went (the browser gave none for this link). Download it with the browser."
   },
   "menuDownloadVideo": {
-    "message": "Download video with Zajil"
+    "message": "Download video with Haitham Downloader"
   },
   "videoRefused": {
-    "message": "Zajil did not take this video."
+    "message": "Haitham Downloader did not take this video."
   },
   "videoNotAnswered": {
-    "message": "Zajil did not answer in time, and may have taken the video: look in Zajil."
+    "message": "Haitham Downloader did not answer in time, and may have taken the video: look in Haitham Downloader."
   },
   "videoNotWeb": {
-    "message": "Zajil cannot read this page: it is not an http or https page."
+    "message": "Haitham Downloader cannot read this page: it is not an http or https page."
   },
   "sitesVideo": {
-    "message": "Video: of a page, the extension learns only where its videos are and their addresses, and on YouTube where a playlist's title is. When the video button shows over a video, Zajil reads its page ahead: the page, the video's address (or the playlist the tab loaded for it) and the page's cookies go to Zajil then; Zajil reads a page at most once in ten minutes, and keeps what it read in memory only. Playlist addresses stay in memory, for each tab, and are forgotten when it closes or opens another page. The extension watches requests and never stops or changes them, notes nothing from a private window, and sends nothing from one before you press."
+    "message": "Video: of a page, the extension learns only where its videos are and their addresses, and on YouTube where a playlist's title is. When the video button shows over a video, Haitham Downloader reads its page ahead: the page, the video's address (or the playlist the tab loaded for it) and the page's cookies go to Haitham Downloader then; Haitham Downloader reads a page at most once in ten minutes, and keeps what it read in memory only. Playlist addresses stay in memory, for each tab, and are forgotten when it closes or opens another page. The extension watches requests and never stops or changes them, notes nothing from a private window, and sends nothing from one before you press."
   },
   "videoButton": {
     "message": "Download video"
   },
   "videoButtonWorking": {
-    "message": "Sending to Zajil…"
+    "message": "Sending to Haitham Downloader…"
   },
   "videoButtonDone": {
-    "message": "Sent to Zajil"
+    "message": "Sent to Haitham Downloader"
   },
   "videoButtonFailed": {
-    "message": "The video did not reach Zajil."
+    "message": "The video did not reach Haitham Downloader."
   },
   "playlistButton": {
-    "message": "Download the playlist with Zajil"
+    "message": "Download the playlist with Haitham Downloader"
   },
   "videoButtonThis": {
     "message": "This video"
@@ -183,43 +183,43 @@
     "message": "Original"
   },
   "videoListMore": {
-    "message": "More qualities in Zajil…"
+    "message": "More qualities in Haitham Downloader…"
   },
   "videoButtonHelp": {
-    "message": "Zajil: pick a quality and the download starts at once"
+    "message": "Haitham Downloader: pick a quality and the download starts at once"
   },
   "videoButtonHide": {
     "message": "Hide the button for this video"
   },
   "playlistNotHere": {
-    "message": "Zajil found no playlist on this page."
+    "message": "Haitham Downloader found no playlist on this page."
   },
   "hostNotRunning": {
-    "message": "Zajil is not running. Start it, then try again."
+    "message": "Haitham Downloader is not running. Start it, then try again."
   },
   "hostNotFound": {
-    "message": "Zajil was not found where it should be. Install it again, or open its settings and choose “Fix the browser integration”."
+    "message": "Haitham Downloader was not found where it should be. Install it again, or open its settings and choose “Fix the browser integration”."
   },
   "hostUnreachable": {
-    "message": "Zajil could not be reached. Restart it, then try again."
+    "message": "Haitham Downloader could not be reached. Restart it, then try again."
   },
   "hostNoAnswer": {
-    "message": "Zajil did not answer in time, and may have it: look in Zajil."
+    "message": "Haitham Downloader did not answer in time, and may have it: look in Haitham Downloader."
   },
   "sitesPartly": {
-    "message": "Partly allowed: a download link's cookies go to Zajil with its download, but the “Download video” button needs the rest of the permission. You can also take it all back."
+    "message": "Partly allowed: a download link's cookies go to Haitham Downloader with its download, but the “Download video” button needs the rest of the permission. You can also take it all back."
   },
   "keysTitle": {
     "message": "Keys with a click on a link"
   },
   "keysSend": {
-    "message": "Sends the link to Zajil"
+    "message": "Sends the link to Haitham Downloader"
   },
   "keysBrowser": {
-    "message": "Leaves it to the browser (Zajil does not take its download)"
+    "message": "Leaves it to the browser (Haitham Downloader does not take its download)"
   },
   "keysHint": {
-    "message": "These work only after “Allow Zajil on sites” (below), as the extension must see the click in the page, and in open tabs once reloaded. The extension reads nothing of the page but the clicked link's address. Strict cookies (SameSite=Strict) never go with a link from another site's page, as in the browser."
+    "message": "These work only after “Allow Haitham Downloader on sites” (below), as the extension must see the click in the page, and in open tabs once reloaded. The extension reads nothing of the page but the clicked link's address. Strict cookies (SameSite=Strict) never go with a link from another site's page, as in the browser."
   },
   "keysOff": {
     "message": "Nothing"
@@ -228,12 +228,12 @@
     "message": "click"
   },
   "sitesKeys": {
-    "message": "Keys with a click (in the settings): of a link clicked with Zajil's or the browser's keys, the extension learns only its address. Any other click stays the page's own."
+    "message": "Keys with a click (in the settings): of a link clicked with Haitham Downloader's or the browser's keys, the extension learns only its address. Any other click stays the page's own."
   },
   "keysUse": {
-    "message": "Use keys to force Zajil or keep it out"
+    "message": "Use keys to force Haitham Downloader or keep it out"
   },
   "keysWarning": {
-    "message": "Off by default. Once on, Ctrl+click no longer opens a link in a new tab (on Windows and Linux): it sends it to Zajil, and a link that is a web page opens in a tab behind this one."
+    "message": "Off by default. Once on, Ctrl+click no longer opens a link in a new tab (on Windows and Linux): it sends it to Haitham Downloader, and a link that is a web page opens in a tab behind this one."
   }
 }
