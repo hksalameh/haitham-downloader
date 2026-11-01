@@ -1,7 +1,7 @@
 <script lang="ts">
-  // The logo inside the window: assets/icon/zajil-mark.svg itself, in the
+  // The logo inside the window: assets/branding/haitham-mark.svg itself, in the
   // colour of the text around it (currentColor). Never redrawn.
-  import mark from "../../../../../assets/icon/zajil-mark.svg?raw";
+  import mark from "../../../../../assets/branding/haitham-mark.svg?raw";
   let { size = 26 }: { size?: number } = $props();
 </script>
 
