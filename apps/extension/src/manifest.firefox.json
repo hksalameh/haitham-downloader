@@ -5,13 +5,51 @@
   "version": "1.2.2",
   "default_locale": "ar",
   "browser_specific_settings": {
-    "gecko": { "id": "zajil@motalim-ai.github.io", "strict_min_version": "142.0", "data_collection_permissions": { "required": ["none"] } }
+    "gecko": {
+      "id": "haitham-downloader@hksalameh.github.io",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
   },
-  "permissions": ["downloads", "contextMenus", "nativeMessaging", "storage", "notifications"],
-  "optional_permissions": ["cookies", "scripting", "webRequest"],
-  "optional_host_permissions": ["<all_urls>"],
-  "background": { "scripts": ["background.js"], "type": "module" },
-  "action": { "default_title": "__MSG_extensionName__", "default_icon": { "32": "icons/32.png", "64": "icons/64.png" } },
-  "options_ui": { "page": "options.html", "open_in_tab": true },
-  "icons": { "32": "icons/32.png", "64": "icons/64.png", "128": "icons/128.png" }
+  "permissions": [
+    "downloads",
+    "contextMenus",
+    "nativeMessaging",
+    "storage",
+    "notifications"
+  ],
+  "optional_permissions": [
+    "cookies",
+    "scripting",
+    "webRequest"
+  ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "__MSG_extensionName__",
+    "default_icon": {
+      "32": "icons/32.png",
+      "64": "icons/64.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "32": "icons/32.png",
+    "64": "icons/64.png",
+    "128": "icons/128.png"
+  }
 }
