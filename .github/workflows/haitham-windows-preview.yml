@@ -2,7 +2,7 @@ name: Haitham Windows preview
 
 on:
   push:
-    branches: [zajil-haitham-base]
+    branches: [zajil-haitham-base, haitham-downloader-custom]
   workflow_dispatch:
 
 permissions:
@@ -50,6 +50,15 @@ jobs:
       - name: Install UI dependencies
         working-directory: apps/desktop
         run: npm ci --no-audit --no-fund
+      - name: Generate independent Haitham Downloader app icons
+        working-directory: apps/desktop
+        shell: bash
+        run: npx tauri icon ../../assets/branding/haitham-icon.svg --output src-tauri/icons
+      - name: Verify user-facing product identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -E 'Zajil|زاجِل|زاجل' locales/ar/zajil.ftl locales/en/zajil.ftl apps/extension/src/_locales/ar/messages.json apps/extension/src/_locales/en/messages.json apps/desktop/index.html apps/desktop/src-tauri/tauri.conf.json
       - name: Build distinct Windows preview installer
         working-directory: apps/desktop
         shell: bash
