@@ -1,4 +1,4 @@
-# نصوص واجهة زاجِل بالعربية (Fluent، https://projectfluent.org).
+# نصوص واجهة مدير تحميل هيثم بالعربية (Fluent، https://projectfluent.org).
 # كل مفتاح هنا موجود في en/zajil.ftl بنفس المتغيرات، ويتأكد من ذلك
 # اختبار crates/zajil-i18n/tests/translations.rs.
 # صيغ الجمع العربية الست حسب CLDR: zero وone وtwo وfew وmany وother.
@@ -6,7 +6,7 @@
 # الفئة من CLDR، في Rust (ICU4X) وفي الواجهة (Intl.PluralRules). مكتبة
 # الجمع التي يستعملها fluent-bundle في Rust تخطئ في 103 و111 بالعربية.
 
-app-name = زاجِل
+app-name = مدير تحميل هيثم
 
 ## الأعداد
 
@@ -214,7 +214,7 @@ details-speed-chart = السرعة في آخر دقيقة
 details-chart-then = قبل دقيقة
 details-chart-now = الآن
 details-failed = توقف التحميل: { $error }
-details-open-browser = جاء هذا التحميل من المتصفح بكوكيزه، وزاجِل لا يحفظ الكوكيز. افتح المتصفح (ونفس الملف الشخصي) الذي جاء منه، فيأخذها زاجِل منه ويكمل وحده. وإن لم يعد ذلك المتصفح موجودًا، استكمل بلا كوكيز.
+details-open-browser = جاء هذا التحميل من المتصفح بكوكيزه، ومدير تحميل هيثم لا يحفظ الكوكيز. افتح المتصفح (ونفس الملف الشخصي) الذي جاء منه، فيأخذها مدير تحميل هيثم منه ويكمل وحده. وإن لم يعد ذلك المتصفح موجودًا، استكمل بلا كوكيز.
 details-without-cookies = استكمل بلا كوكيز
 details-needs-ok = هذا الملف قد يشغّل برامج على جهازك (برنامج أو مثبّت أو سكربت أو ملف Office بماكرو)، وجاء من صفحة في المتصفح، فلن يبدأ تحميله حتى تبدأه أنت. ابدأه فقط إن كنت تثق بالموقع.
 
@@ -222,7 +222,7 @@ details-needs-ok = هذا الملف قد يشغّل برامج على جهاز�
 
 refresh-action = تحديث الرابط
 refresh-title = تحديث رابط التحميل
-refresh-hint = إذا انتهت صلاحية الرابط، فخذ من الموقع رابطًا جديدًا للملف نفسه والصقه هنا. يتأكد زاجِل أنه الملف نفسه، ثم يكمل من حيث توقف.
+refresh-hint = إذا انتهت صلاحية الرابط، فخذ من الموقع رابطًا جديدًا للملف نفسه والصقه هنا. يتأكد مدير تحميل هيثم أنه الملف نفسه، ثم يكمل من حيث توقف.
 refresh-url = الرابط الجديد
 refresh-cancel = إلغاء
 refresh-go = حدّث واستكمل
@@ -231,13 +231,13 @@ refresh-stopping = التحميل ما زال يتوقف. انتظر لحظة، 
 refresh-busy = تحديث رابط هذا التحميل جارٍ بالفعل.
 refresh-cancelled = أُلغي تحديث الرابط، ولم يتغيّر التحميل.
 refresh-done = اكتمل هذا التحميل، فلا يحتاج رابطًا جديدًا.
-refresh-bad-link = زاجِل لا يقبل هذا الرابط: يجب أن يبدأ بـ http أو https، وألا يحمل اسم مستخدم أو كلمة مرور.
+refresh-bad-link = مدير تحميل هيثم لا يقبل هذا الرابط: يجب أن يبدأ بـ http أو https، وألا يحمل اسم مستخدم أو كلمة مرور.
 refresh-size = الرابط الجديد لملف آخر: حجمه { $theirs }، وحجم هذا التحميل { $ours }.
-refresh-size-unknown = لا يُعرف حجم الملف الجديد أو حجم هذا التحميل، فلا يستطيع زاجِل التأكد أنه الملف نفسه.
-refresh-version = الرابط الجديد لنسخة أخرى من الملف، فلن يكمل زاجِل منه حتى لا يفسد الملف.
-refresh-validator-kind = السيرفر يصف الملف الجديد بطريقة مختلفة، فلا يستطيع زاجِل التأكد أنه الملف نفسه.
-refresh-new-no-validator = سيرفر الرابط الجديد لا يعطي ما يتأكد به زاجِل أنه الملف نفسه.
-refresh-no-validator = سيرفر هذا التحميل لم يعطِ ما يتأكد به زاجِل من الملف، فلا يمكن تحديث رابطه. ابدأ تحميلًا جديدًا بالرابط الجديد.
+refresh-size-unknown = لا يُعرف حجم الملف الجديد أو حجم هذا التحميل، فلا يستطيع مدير تحميل هيثم التأكد أنه الملف نفسه.
+refresh-version = الرابط الجديد لنسخة أخرى من الملف، فلن يكمل مدير تحميل هيثم منه حتى لا يفسد الملف.
+refresh-validator-kind = السيرفر يصف الملف الجديد بطريقة مختلفة، فلا يستطيع مدير تحميل هيثم التأكد أنه الملف نفسه.
+refresh-new-no-validator = سيرفر الرابط الجديد لا يعطي ما يتأكد به مدير تحميل هيثم أنه الملف نفسه.
+refresh-no-validator = سيرفر هذا التحميل لم يعطِ ما يتأكد به مدير تحميل هيثم من الملف، فلا يمكن تحديث رابطه. ابدأ تحميلًا جديدًا بالرابط الجديد.
 refresh-failed = لم يُحدَّث الرابط.
 
 ## الإعدادات
@@ -262,22 +262,22 @@ settings-limit-hint = يشمل كل التحميلات معًا.
 settings-limit-none = بلا حد
 settings-limit-set = حدد سرعة
 settings-autostart = عند بدء النظام
-settings-autostart-label = شغّل زاجِل مع بدء النظام
+settings-autostart-label = شغّل مدير تحميل هيثم مع بدء النظام
 settings-autostart-failed = تعذّر تغيير التشغيل مع بدء النظام.
 settings-notifications = الإشعارات
 settings-notifications-label = أخبرني عندما يكتمل تحميل أو يفشل
 settings-browser = المتصفح
-settings-browser-hint = يسجّل زاجِل نفسه في Chrome وEdge وBrave وOpera وVivaldi وChromium وFirefox عند كل تشغيل، مثبَّتة كانت أو لا، لتصل إليه إضافته. وهذا الزر يعيد التسجيل ويقول النتيجة.
+settings-browser-hint = يسجّل مدير تحميل هيثم نفسه في Chrome وEdge وBrave وOpera وVivaldi وChromium وFirefox عند كل تشغيل، مثبَّتة كانت أو لا، لتصل إليه إضافته. وهذا الزر يعيد التسجيل ويقول النتيجة.
 settings-browser-fix = أصلح التكامل مع المتصفح
 settings-browser-ok = { $browser }: مسجَّل
 settings-browser-failed = { $browser }: لم يُسجَّل ({ $error })
-settings-browser-missing = لم يُعثر على zajil-host بجانب البرنامج، فلا يصل إليه أي متصفح.
-settings-browser-temporary = يعمل البرنامج من مكان يزول حين يُغلق (نقله ماك جانبًا)، فلم يُسجَّل في أي متصفح. انقل زاجِل إلى مجلد «التطبيقات».
-settings-browser-unsafe = يستطيع مستخدم آخر أن يغيّر zajil-host أو مجلده، فلم يُسجَّل في أي متصفح.
+settings-browser-missing = لم يُعثر على مضيف المتصفح بجانب البرنامج، فلا يصل إليه أي متصفح.
+settings-browser-temporary = يعمل البرنامج من مكان يزول حين يُغلق (نقله ماك جانبًا)، فلم يُسجَّل في أي متصفح. انقل مدير تحميل هيثم إلى مجلد «التطبيقات».
+settings-browser-unsafe = يستطيع مستخدم آخر أن يغيّر مضيف المتصفح أو مجلده، فلم يُسجَّل في أي متصفح.
 settings-browser-working = يسجّل…
 settings-clipboard = الحافظة
 settings-clipboard-label = راقب الحافظة، وضع رابط التحميل الذي أنسخه في خانة الإضافة
-settings-clipboard-hint = ينظر زاجِل في الحافظة مرتين في الثانية بحثًا عن رابط ملف، ولا يحفظ ما فيها. ولا يتصل بالرابط ولا يضيف شيئًا قبل أن تضغط «تمام» في نافذة «إضافة رابط».
+settings-clipboard-hint = ينظر مدير تحميل هيثم في الحافظة مرتين في الثانية بحثًا عن رابط ملف، ولا يحفظ ما فيها. ولا يتصل بالرابط ولا يضيف شيئًا قبل أن تضغط «تمام» في نافذة «إضافة رابط».
 settings-export = صدّر الطوابير
 settings-import = استورد طوابير
 settings-export-warning = الملف فيه الروابط كما هي، وبعضها قد يحمل مفاتيح دخول مؤقتة. لا تنشره.
@@ -301,10 +301,10 @@ categories-delete = احذف الفئة
 
 ## شريط النظام
 
-tray-open = افتح زاجِل
+tray-open = افتح مدير تحميل هيثم
 tray-pause-all = أوقف الكل
 tray-resume-all = استكمل الكل
-tray-quit = إنهاء زاجِل
+tray-quit = إنهاء مدير تحميل هيثم
 
 ## الإشعارات
 
@@ -429,11 +429,11 @@ cmd-open-folder = فتح المجلد
 cmd-progress = نافذة التقدّم
 cmd-refresh-link = تحديث الرابط…
 cmd-properties = الخصائص
-cmd-about = عن زاجِل
+cmd-about = عن مدير تحميل هيثم
 cmd-move-to-queue = أضف إلى طابور
-about-text = زاجِل، الإصدار { $version }
+about-text = مدير تحميل هيثم، الإصدار { $version }
 about-copy-problem = انسخ معلومات المشكلة
-about-copied-problem = نُسخت معلومات المشكلة: نسخة زاجِل والنظام وأدوات الفيديو وآخر أسطر السجل، بلا روابط. الصقها مع وصف المشكلة حيث تطلب المساعدة: صفحة المشروع على GitHub، أو تعليق، أو رسالة.
+about-copied-problem = نُسخت معلومات المشكلة: نسخة مدير تحميل هيثم والنظام وأدوات الفيديو وآخر أسطر السجل، بلا روابط. الصقها مع وصف المشكلة حيث تطلب المساعدة: صفحة المشروع على GitHub، أو تعليق، أو رسالة.
 about-copy-failed = تعذّر النسخ إلى الحافظة.
 table-label = التحميلات
 col-resize = عرض عمود { $column }
@@ -469,14 +469,14 @@ add-remember-failed = أُضيف التحميل، لكن لم يُحفظ الم�
 ## Quit with downloads running (owner's decision on #83)
 quit-question =
     { PLURAL($count) ->
-        [zero] لا تحميلات تعمل الآن. هل تُنهي زاجِل؟
-        [one] يعمل الآن تحميل واحد. هل تُنهي زاجِل؟
-        [two] يعمل الآن تحميلان. هل تُنهي زاجِل؟
-        [few] يعمل الآن { $count } تحميلات. هل تُنهي زاجِل؟
-        [many] يعمل الآن { $count } تحميلًا. هل تُنهي زاجِل؟
-       *[other] يعمل الآن { $count } تحميل. هل تُنهي زاجِل؟
+        [zero] لا تحميلات تعمل الآن. هل تُنهي مدير تحميل هيثم؟
+        [one] يعمل الآن تحميل واحد. هل تُنهي مدير تحميل هيثم؟
+        [two] يعمل الآن تحميلان. هل تُنهي مدير تحميل هيثم؟
+        [few] يعمل الآن { $count } تحميلات. هل تُنهي مدير تحميل هيثم؟
+        [many] يعمل الآن { $count } تحميلًا. هل تُنهي مدير تحميل هيثم؟
+       *[other] يعمل الآن { $count } تحميل. هل تُنهي مدير تحميل هيثم؟
     }
-quit-ok = إنهاء زاجِل
+quit-ok = إنهاء مدير تحميل هيثم
 
 ## الجدولة
 
@@ -514,7 +514,7 @@ schedule-after = بعد انتهاء الطابور
 schedule-after-nothing = لا شيء
 schedule-after-shutdown = أغلق الجهاز
 schedule-after-sleep = السكون
-schedule-after-hint = لهذا التشغيل فقط، ولا يُحفظ. وقبله يعدّ زاجِل دقيقة يمكنك الإلغاء فيها.
+schedule-after-hint = لهذا التشغيل فقط، ولا يُحفظ. وقبله يعدّ مدير تحميل هيثم دقيقة يمكنك الإلغاء فيها.
 schedule-countdown-shutdown = انتهى الطابور، ويُغلق الجهاز بعد:
 schedule-countdown-sleep = انتهى الطابور، ويدخل الجهاز في السكون بعد:
 schedule-countdown-cancel = إلغاء
@@ -533,7 +533,7 @@ schedule-tries = المحاولات لكل ملف
 schedule-after-open = وافتح بعده ملفًا أو برنامجًا:
 schedule-after-open-pick = اختر ملفًا…
 schedule-after-open-clear = إزالة
-schedule-after-open-confirm = سيفتح زاجِل هذا الملف أو البرنامج كلما انتهت كل تحميلات هذا الطابور. احفظه فقط إن كنت تثق به.
+schedule-after-open-confirm = سيفتح مدير تحميل هيثم هذا الملف أو البرنامج كلما انتهت كل تحميلات هذا الطابور. احفظه فقط إن كنت تثق به.
 schedule-after-open-ok = احفظه
 
 ## الاكتمال
@@ -553,13 +553,13 @@ complete-drag-hint = اسحب الملف من هنا إلى أي برنامج أ
 
 ## التحديث
 
-update-available = توجد نسخة جديدة من زاجِل:
+update-available = توجد نسخة جديدة من مدير تحميل هيثم:
 update-release-page = صفحة الإصدار
 update-dismiss = إخفاء حتى التشغيل التالي
 update-install = حدّث الآن
-extension-old = إضافة المتصفح قديمة، وتحتاج تحديثًا لتعمل معها كل خصائص زاجِل. نسختها:
+extension-old = إضافة المتصفح قديمة، وتحتاج تحديثًا لتعمل معها كل خصائص مدير تحميل هيثم. نسختها:
 extension-old-help = طريقة التحديث
-update-install-hint = تحفظ التحميلات تقدّمها وتتوقف، ثم يتحدّث زاجِل ويُفتح من جديد، فتُستكمل.
+update-install-hint = تحفظ التحميلات تقدّمها وتتوقف، ثم يتحدّث مدير تحميل هيثم ويُفتح من جديد، فتُستكمل.
 update-skip = تخطَّ هذه النسخة
 update-downloading = يُنزَّل التحديث…
 update-failed = تعذّر تثبيت التحديث. نزّله من صفحة الإصدار.
@@ -588,18 +588,18 @@ sites-too-many = القائمة أطول مما يُسمح به.
 video-soon = تحميل الفيديو قادم قريبًا.
 
 ## The main window's title bar (the design of #83)
-app-title = زاجِل لإدارة التحميل
+app-title = مدير تحميل هيثم لإدارة التحميل
 win-minimize = تصغير
 win-maximize = تكبير
 win-restore = استعادة
 win-close = إغلاق
 
 ## Closing the window (owner's decision, after #105)
-tray-still-running = زاجِل ما زال يعمل في شريط النظام، والتحميلات تكمل. اختر «إنهاء زاجِل» من أيقونته لإنهائه.
+tray-still-running = مدير تحميل هيثم ما زال يعمل في شريط النظام، والتحميلات تكمل. اختر «إنهاء مدير تحميل هيثم» من أيقونته لإنهائه.
 settings-closing = إغلاق النافذة
-settings-closing-label = إغلاق النافذة يُنهي زاجِل
-settings-closing-hint = دون هذا الخيار تختفي النافذة ويبقى زاجِل في شريط النظام والتحميلات تكمل.
-settings-closing-no-tray = لا يظهر شريط النظام في سطح المكتب هذا، فإغلاق النافذة يُنهي زاجِل دائمًا (ويسأل أولًا إن كانت هناك تحميلات تعمل).
+settings-closing-label = إغلاق النافذة يُنهي مدير تحميل هيثم
+settings-closing-hint = دون هذا الخيار تختفي النافذة ويبقى مدير تحميل هيثم في شريط النظام والتحميلات تكمل.
+settings-closing-no-tray = لا يظهر شريط النظام في سطح المكتب هذا، فإغلاق النافذة يُنهي مدير تحميل هيثم دائمًا (ويسأل أولًا إن كانت هناك تحميلات تعمل).
 
 ## M5.5: the progress window (design window 4)
 progress-title = تقدّم التحميل
@@ -663,7 +663,7 @@ drop-box = سلة الإسقاط
 drop-hint = اسحب رابطًا هنا لتحميله. وبكليك يمين: تحميل بالجملة، أو إخفاؤها.
 tray-drop-box = إظهار سلة الإسقاط
 settings-drop-box-label = إظهار سلة الإسقاط فوق كل النوافذ
-settings-drop-box-hint = مربع صغير بشعار زاجِل، تسحب عليه رابطًا من المتصفح فيفتح «معلومات ملف التحميل». تحرّكه بسحبه، وبكليك يمين عليه: تحميل بالجملة، أو إخفاؤه.
+settings-drop-box-hint = مربع صغير بشعار مدير تحميل هيثم، تسحب عليه رابطًا من المتصفح فيفتح «معلومات ملف التحميل». تحرّكه بسحبه، وبكليك يمين عليه: تحميل بالجملة، أو إخفاؤه.
 
 ## The table's queue column, «Remove from queue», and deleting what has not finished (M5.5)
 col-queue = الطابور
@@ -693,12 +693,12 @@ cmd-video = تحميل فيديو…
 video-title = جودة الفيديو
 video-page = رابط صفحة الفيديو
 video-consent-title = أدوات الفيديو
-video-consent-why = لتحميل الفيديو يحتاج زاجِل إلى أدوات مجانية مفتوحة المصدر (QuickJS-NG منها لفيديوهات يوتيوب). لن يُنزَّل شيء قبل أن توافق.
+video-consent-why = لتحميل الفيديو يحتاج مدير تحميل هيثم إلى أدوات مجانية مفتوحة المصدر (QuickJS-NG منها لفيديوهات يوتيوب). لن يُنزَّل شيء قبل أن توافق.
 video-tool = الأداة
 video-version = النسخة
 video-source = المصدر
 video-license = الترخيص
-video-consent-note = تُحفظ في مجلد بيانات زاجِل، ويُتحقق من بصمة كل ملف قبل تشغيله. يمكنك حذفها من الإعدادات.
+video-consent-note = تُحفظ في مجلد بيانات مدير تحميل هيثم، ويُتحقق من بصمة كل ملف قبل تشغيله. يمكنك حذفها من الإعدادات.
 video-consent-ok = موافق، نزّل الأدوات
 video-installing = تنزيل أدوات الفيديو…
 video-probing = جارٍ سؤال الصفحة عن الفيديو…
@@ -723,19 +723,19 @@ video-open-playlist = افتح
 video-playlists-only = هذه قوائم تشغيل: افتح كل واحدة منها لتختار فيديوهاتها.
 video-error-playlist = هذا الرابط قائمة تشغيل لا فيديو. افتحه في «جودة الفيديو» لتختار منه.
 video-done = اكتمل تحميل الفيديو.
-video-drm = هذا الفيديو محمي، وزاجِل لا يحمّل المحتوى المحمي.
+video-drm = هذا الفيديو محمي، ومدير تحميل هيثم لا يحمّل المحتوى المحمي.
 video-tools-missing = أدوات الفيديو غير منزّلة أو تغيّرت. نزّلها من الإعدادات ← أدوات الفيديو، أو حمّل الفيديو من جديد.
 video-not-quicktime = لا تعمل في QuickTime
 video-tools-not-ready = نُزِّل yt-dlp لكنه لم يبدأ، فأدوات الفيديو ليست جاهزة. حاول مرة أخرى، وإن تكرر ذلك فأخبرنا بما في «التفاصيل».
-video-error-no_formats = لم يجد زاجِل جودة يمكن تحميلها من هذا الفيديو. جرّب مرة أخرى بعد قليل.
+video-error-no_formats = لم يجد مدير تحميل هيثم جودة يمكن تحميلها من هذا الفيديو. جرّب مرة أخرى بعد قليل.
 video-error-sign_in = هذا الفيديو لا يُفتح إلا بعد تسجيل الدخول في موقعه. سجّل دخولك في المتصفح واسمح للإضافة بإرسال الكوكيز، ثم أعد المحاولة.
 video-error-private = هذا الفيديو خاص، فلا يراه إلا من أذن له صاحبه.
-video-error-unsupported = لا يعرف زاجِل طريقة لتحميل الفيديو من هذا الموقع.
-video-error-challenge = لم يستطع زاجِل أن يجتاز تحقّق يوتيوب لهذا الفيديو. جرّب مرة أخرى بعد قليل.
+video-error-unsupported = لا يعرف مدير تحميل هيثم طريقة لتحميل الفيديو من هذا الموقع.
+video-error-challenge = لم يستطع مدير تحميل هيثم أن يجتاز تحقّق يوتيوب لهذا الفيديو. جرّب مرة أخرى بعد قليل.
 video-error-other = تعذّر تحميل هذا الفيديو.
 video-error-other-details = تعذّر تحميل هذا الفيديو. التفاصيل: { $details }
 video-error-details = التفاصيل
-video-started-reading = يقرأ زاجِل الفيديو…
+video-started-reading = يقرأ مدير تحميل هيثم الفيديو…
 video-size = الحجم
 
 ## Video downloads in the list (M6, #149)
@@ -743,7 +743,7 @@ queue-video = فيديو
 
 ## Video tools in the settings and «About» (M6, #149)
 settings-video-tools = أدوات الفيديو
-settings-video-tools-hint = تُنزَّل بموافقتك أول مرة تحمّل فيها فيديو، أو من هنا، وتُحفظ في مجلد بيانات زاجِل.
+settings-video-tools-hint = تُنزَّل بموافقتك أول مرة تحمّل فيها فيديو، أو من هنا، وتُحفظ في مجلد بيانات مدير تحميل هيثم.
 settings-video-tools-ready = جاهزة
 settings-video-tools-missing = غير منزّلة
 settings-video-tools-remove = حذف أدوات الفيديو
@@ -756,14 +756,14 @@ settings-finish-hint = ما تفعله نافذة التحميل حين ينته
 settings-video-tools-install = نزّل أدوات الفيديو
 settings-video-tools-installing = تنزيل { $tool }… { $percent }
 settings-video-tools-installed = أدوات الفيديو جاهزة.
-about-video-tools = يحمّل زاجِل الفيديو بأدوات حرة، تُنزَّل من مصادرها:
+about-video-tools = يحمّل مدير تحميل هيثم الفيديو بأدوات حرة، تُنزَّل من مصادرها:
 about-ffmpeg = يستعمل هذا البرنامج مكتبات من مشروع FFmpeg بترخيص { $license }.
 about-tool = { $tool } { $version }، بترخيص { $license }. مصدره: { $source }
 about-tool-or-later = { $tool } { $version }، بترخيص { $license } أو أحدث. مصدره: { $source }
-about-tool-yt-dlp = { $tool } { $version }، بترخيص { $binary } للملف الذي ينزّله زاجِل (والكود المصدري بترخيص { $license }). مصدره: { $source }
+about-tool-yt-dlp = { $tool } { $version }، بترخيص { $binary } للملف الذي ينزّله مدير تحميل هيثم (والكود المصدري بترخيص { $license }). مصدره: { $source }
 about-or-later = { $license } أو أحدث
-about-not-ours = زاجِل لا يملك هذه الأدوات، وهي لأصحابها:
-tool-license-yt-dlp = { $binary } للملف الذي ينزّله زاجِل (والكود المصدري بترخيص { $source })
+about-not-ours = مدير تحميل هيثم لا يملك هذه الأدوات، وهي لأصحابها:
+tool-license-yt-dlp = { $binary } للملف الذي ينزّله مدير تحميل هيثم (والكود المصدري بترخيص { $source })
 
 ## Sounds (M5.5)
 settings-sounds = الأصوات
@@ -856,20 +856,20 @@ grab-extensions = امتدادات أخرى
 grab-extensions-hint = مفصولة بفواصل، مثل { $example }.
 grab-sites-on = اسمح بمواقع أخرى غير موقع البداية
 grab-sites-hint = اسم الموقع وحده، مفصولة بفواصل، مثل { $example }.
-grab-robots = زاجِل يحترم robots.txt الخاص بالموقع.
+grab-robots = مدير تحميل هيثم يحترم robots.txt الخاص بالموقع.
 grab-limits = الحدود
 grab-max-files = أقصى عدد ملفات
 grab-max-total = أقصى حجم بالجيجابايت
 grab-files-hint = الافتراضي { $default }، والأقصى { $max }.
 grab-total-hint = الافتراضي { $default }.
 grab-check = افحص
-grab-checking = يفحص زاجِل الموقع، طلبًا واحدًا في الثانية…
+grab-checking = يفحص مدير تحميل هيثم الموقع، طلبًا واحدًا في الثانية…
 grab-progress = صفحات: { $pages }، ملفات: { $files }
 grab-stop = أوقف الفحص
 grab-chosen = المحدد: { $chosen } من { $all }
 grab-select-all = تحديد الكل
 grab-select-none = إلغاء التحديد
-grab-none = لم يجد زاجِل ملفات من الأنواع المطلوبة.
+grab-none = لم يجد مدير تحميل هيثم ملفات من الأنواع المطلوبة.
 grab-robots-closed = robots.txt الخاص بالموقع لا يسمح بفحصه.
 grab-skipped = روابط تُركت: { $skipped } (خارج الموقع، أو ليست من الأنواع المطلوبة، أو منعها robots.txt).
 grab-limit-files = وصل الفحص إلى أقصى عدد ملفات، وقد يكون في الموقع غيرها.
@@ -906,7 +906,7 @@ settings-proxy = البروكسي
 settings-proxy-none = بدون بروكسي
 settings-proxy-use = استخدم هذا البروكسي
 settings-proxy-save = احفظ
-settings-proxy-saved = حُفظ. يُطبَّق عند تشغيل زاجِل في المرة القادمة.
+settings-proxy-saved = حُفظ. يُطبَّق عند تشغيل مدير تحميل هيثم في المرة القادمة.
 settings-proxy-hint = اكتبه هكذا: http://العنوان:المنفذ. تمر به كل التحميلات، ويبقى التحقق من شهادات المواقع كما هو. لا يُقبل اسم مستخدم أو كلمة مرور فيه.
-settings-logins-hint = يستخدم زاجِل تسجيل دخولك في المتصفح (الكوكيز) لكل تحميل يصله من الإضافة، ولا يحفظ كلمات مرور. إن لم يصل تحميل من موقع مسجّل فيه، فأصلح ربط المتصفح من هنا.
+settings-logins-hint = يستخدم مدير تحميل هيثم تسجيل دخولك في المتصفح (الكوكيز) لكل تحميل يصله من الإضافة، ولا يحفظ كلمات مرور. إن لم يصل تحميل من موقع مسجّل فيه، فأصلح ربط المتصفح من هنا.
 settings-types-hint = الفئات تحدد نوع كل ملف من امتداده أو موقعه، ومجلدًا لكل نوع. عدّلها من محرر الفئات.
